@@ -1,0 +1,793 @@
+#!/usr/bin/python
+# -*- coding: utf-8 -*-
+from __future__ import division
+import argparse,csv,sys
+import numpy as np
+import matplotlib.pyplot as plt
+from scipy.interpolate import interp1d
+from scipy.interpolate import InterpolatedUnivariateSpline 
+font = {'family': 'Times New Roman', 'weight': 'normal', 'size': '14.0'}
+plt.rc('font', **font)
+
+def exp_smoothing(x, y, args):
+	'''Test of three kinds of exponential smoothing models: SES, ES_A and ES_DA.
+	Smoothing coefficient is adjusted on every step with Nelder-Mead minimization of 
+	squared error of last prediction.
+	'''
+	from scipy.optimize import minimize
+
+	def SES(alpha, x_current, s_previous):
+		'''Simple exponential smoothing
+		'''
+		s_current = alpha * x_current + (1 - alpha) * s_previous
+		return s_current, s_current
+
+	def ES_A((alpha, gamma), x_current, s_previous, t_previous):
+		'''Exponential smoothing with additive trend
+		'''
+		s_current = alpha * x_current + (1 - alpha) * (s_previous + t_previous)
+		t_current = gamma * (s_current - s_previous) + (1 - gamma) * t_previous
+		return s_current + t_current, s_current, t_current
+
+	def ES_DA((alpha, gamma, phi), x_current, s_previous, t_previous):
+		'''Exponential smoothing with damped additive trend
+		'''
+		s_current = alpha * x_current + (1 - alpha) * (s_previous + phi * t_previous)
+		t_current = gamma * (s_current - s_previous) + (1 - gamma) * phi * t_previous
+		return s_current + phi * t_current, s_current, t_current
+
+	def squared_error(parameters, y_current, y_previous, s, t=0, model='SES'):
+		'''Squared error of one-step prediction
+		'''
+		sse = 0
+		if model == 'SES':
+			sse = pow((y_current - SES(parameters, y_previous, s)[0]), 2)
+		elif model == 'ES_A':
+			sse = pow((y_current - ES_A(parameters, y_previous, s, t)[0]), 2)
+		elif model == 'ES_DA':
+			sse = pow((y_current - ES_DA(parameters, y_previous, s, t)[0]), 2)
+		return sse
+
+	def param_optimization(initial_parameters, y_current, y_previous, s, t=0, model='SES'):
+		'''Adjusts smoothing, trend and damping coefficients, minimizing the square of last prediction error
+		'''
+
+		if model == 'SES':
+			# Find optimal alpha value (nelder-mead). For debug add option <'disp': 'True'>
+			result = minimize(squared_error, initial_parameters, args=(y_current, y_previous, s, model), method='nelder-mead', options={'maxiter': '100', 'disp': 'True'}) 
+		elif model == 'ES_A':
+			# Find optimal alpha and gamma values
+			result = minimize(squared_error, initial_parameters, args=(y_current, y_previous, s, t, model), method='nelder-mead', options={'maxiter': '100', 'disp': 'True'}) 
+		elif model == 'ES_DA':
+			# Find optimal alpha, gamma and phi values
+			result = minimize(squared_error, initial_parameters, args=(y_current, y_previous, s, t, model), method='nelder-mead', options={'maxiter': '100', 'disp': 'True'}) 
+		else:
+			print "Error! Wrong model type!"
+			exit(1)
+
+		# Check alpha constraints
+		if result.x[0] < 0:
+			result.x[0] = 0
+		elif result.x[0] > 1:
+			result.x[0] = 1
+
+		return result.x
+
+
+	# Prediction data initialization
+	predict = np.zeros((3, len(y)))
+	pr_models = [u"Модель SES", u"Модель ES-A", u"Модель ES-DA"]
+	
+	# Parameters initializing 
+	# Initial values in predicted array
+	for i in xrange(3):
+		predict[i,:2] = y[:2]
+	# Models initial parameters
+	alpha_SES = np.zeros(len(y)); alpha_ES_A = np.zeros(len(y)); alpha_ES_DA = np.zeros(len(y))
+	alpha_SES[1] = alpha_ES_A[1] = alpha_ES_DA[1] = 0.2
+	gamma_ES_A = np.zeros(len(y)); gamma_ES_DA = np.zeros(len(y))
+	gamma_ES_A[1] = gamma_ES_DA[1] = 1
+	phi_ES_DA = np.zeros(len(y));
+	phi_ES_DA[1] = 0.5
+	# Smoothed and trend initial values
+	s_ses = np.zeros(len(y)); s_es_a = np.zeros(len(y)); s_es_da = np.zeros(len(y))
+	s_ses[0] = s_es_a[0] = s_es_da[0] = y[0]
+	s_ses[1] = s_es_a[1] = s_es_da[1] = y[1]
+	t_es_a = np.zeros(len(y)); t_es_da = np.zeros(len(y))
+	t_es_a[1] = t_es_da[1] = y[1] - y[0]
+
+
+	# Prediction procedure
+	for i in xrange(2, len(y) - 1):
+		# SES prediction
+		alpha_SES[i] = param_optimization(alpha_SES[i-1], y[i], y[i-1], s_ses[i-2], model='SES')
+		predict[0, i+1], s_ses[i] = SES(alpha_SES[i], y[i], s_ses[i-1])
+		
+		# ES_A prediction
+		alpha_ES_A[i], gamma_ES_A[i] = param_optimization(np.asarray([alpha_ES_A[i-1], gamma_ES_A[i-1]]), y[i-1], s_es_a[i-2], t_es_a[i-2], model='ES_A')
+		predict[1, i+1], s_es_a[i], t_es_a[i] = ES_A((alpha_ES_A[i], gamma_ES_A[i]), y[i], s_es_a[i-1], t_es_a[i-1])
+
+		# ES_DA prediction
+		alpha_ES_DA[i], gamma_ES_DA[i], phi_ES_DA[i] = param_optimization(np.asarray([alpha_ES_DA[i-1], gamma_ES_DA[i-1], phi_ES_DA[i-1]]), y[i-1], s_es_da[i-2], t_es_da[i-2], model='ES_DA')
+		predict[2, i+1], s_es_da[i], t_es_da[i] = ES_DA((alpha_ES_DA[i], gamma_ES_DA[i], phi_ES_DA[i]), y[i], s_es_da[i-1], t_es_da[i-1])
+
+
+	# Error estimation
+	predict_error_abs = np.zeros((3, len(y))); predict_error_rel = np.zeros((3, len(y)))
+	for i in xrange(3):
+		for j in xrange(len(y)):
+			predict_error_abs[i, j] = abs(y[i] - predict[i, j])
+			if y[i] != 0:
+				predict_error_rel[i, j] = 100 * predict_error_abs[i, j] / y[i]
+			else:
+				if predict[i, j] == 0:
+					predict_error_rel[i, j] = 0
+				else:
+					predict_error_rel[i, j] = 100
+
+	# Mean error and variance calculation
+	#mean_abs_error = []; std_abs_error = []
+	mean_rel_error = []; std_rel_error = []
+	print "Prediction model		MAPE,%     Variation MAPE,%"
+	for i in xrange(3):
+		mean_rel_error.append(np.mean(predict_error_rel[i]))
+		std_rel_error.append(np.std(predict_error_rel[i]))
+		print "%s: %15.2f %15.2f" % (pr_models[i], mean_rel_error[i], std_rel_error[i])
+	print "\n"
+
+
+	# Plot results
+	if args.plot:
+		# Plot prediction results
+		fig1 = plt.figure()
+		for i in xrange(3):
+			plt.plot(x, predict[i], label=pr_models[i])
+		plt.plot(x, y, colors[-1], label=u"Исходный")
+		plt.xlabel(u'Время')
+		plt.ylabel(u'Интенсивность трафика')
+		plt.title(u"Экспоненциальное сглаживание") 
+		plt.legend(loc='best')
+		plt.grid(True)
+		if args.save != "":
+			plt.savefig(args.save + "-forecast.png", dpi=300)
+
+		# Plot SES-model parameter evolution
+		fig2 = plt.figure()
+		plt.plot(x, alpha_SES, label=u"Коэффициент сглаживания")
+		plt.xlabel(u'Время')
+		plt.ylabel(u'Значение параметра')
+		plt.title(u"Модель SES. Эволюция параметров") 
+		plt.legend(loc='best')
+		plt.grid(True)
+		if args.save != "":
+			plt.savefig(args.save + "-SES.png", dpi=300)
+
+
+		# Plot ES_A-model parameter evolution
+		fig3 = plt.figure()
+		plt.plot(x, alpha_ES_A, label=u"Коэффициент сглаживания")
+		plt.plot(x, gamma_ES_A, label=u"Сглаживание тренда")
+		plt.xlabel(u'Время')
+		plt.ylabel(u'Значение параметра')
+		plt.title(u"Модель ES-A. Эволюция параметров") 
+		plt.legend(loc='best')
+		plt.grid(True)
+		if args.save != "":
+			plt.savefig(args.save + "-ES-A.png", dpi=300)
+
+		# Plot ES_A-model parameter evolution
+		fig4 = plt.figure()
+		plt.plot(x, alpha_ES_DA, label=u"Коэффициент сглаживания")
+		plt.plot(x, gamma_ES_DA, label=u"Сглаживание тренда")
+		plt.plot(x, phi_ES_DA, label=u"Параметр демпфирования")
+		plt.xlabel(u'Время')
+		plt.ylabel(u'Значение параметра')
+		plt.title(u"Модель ES-DA. Эволюция параметров") 
+		plt.legend(loc='best')
+		plt.grid(True)
+		if args.save != "":
+			plt.savefig(args.save + "-ES-DA.png", dpi=300)
+			print "Results are saved in correponding files."
+		plt.show()
+
+		
+
+
+
+def LP(x, y, args):
+	import lpc
+	'''Test of linear prediction with different prediction orders and different correlation matrix size.
+	Linear prediction procedure used here is similar to the one implemented in LP vocoders.'''
+	global colors
+
+	def input_list_int(text, splitter=','):
+		lst_string = raw_input(text).split(splitter)
+		lst = []
+		for i in lst_string:
+			try:
+				lst.append(int(i))
+			except ValueError:
+				print "Inappropriate value..."
+				continue
+		num_elements = len(lst)
+		if num_elements < 1:
+			print "Parameters list is empty! Game over."
+			exit(1)
+		return sorted(lst), num_elements
+
+	orders, num_orders = input_list_int("Enter predictor orders separated by comma: ")
+	signal_lengths, num_signal_lengths = input_list_int("Enter analysed signal lengths separated by comma: ")
+
+	# Create array to store LP coefficients
+	coefficients_array = [[] for i in xrange(num_orders*num_signal_lengths)]
+
+	# Check signal lengths
+	if max(orders) > min(signal_lengths):
+		print "Wrong parameters! Signal length should be greater than prediction order."
+		exit(1)
+
+	# Prediction data initialization
+	predict=np.zeros((num_signal_lengths, num_orders, len(y)))
+	
+	# Initial history points for prediction
+	for i in xrange(num_signal_lengths):
+		for j in xrange(num_orders):
+			predict[i,j,:signal_lengths[i]]=y[:signal_lengths[i]]
+
+
+	# Prediction procedure
+	for i in xrange(num_signal_lengths):
+		for j in xrange(num_orders):
+			for k in xrange(signal_lengths[i],len(y)):
+				lp_coefficients = lpc.lpc_ref(y[k-signal_lengths[i]:k], orders[j])
+
+				# Save coefficients for further spectrum animation
+				if args.save != "":
+					coefficients_array[i*num_orders+j].append(lp_coefficients)
+				
+				point = lpc.lpc_predict(y[k-orders[j]:k], orders[j], lp_coefficients)
+				if point > 0:
+					predict[i,j,k] = point
+				else:
+					predict[i,j,k] = 0
+
+	# Plot results
+	if args.plot:
+		for i in xrange(num_signal_lengths):
+			for j in xrange(num_orders):
+				plt.plot(x, predict[i,j], colors[i*num_orders+j], label=u"Порядок предсказания={}, длина сигнала ={}".format(orders[j],signal_lengths[i]))
+		plt.plot(x,y,colors[-1],label=u"Исходный")
+		plt.xlabel(u'Время')
+		plt.ylabel(u'Интенсивность трафика')
+		plt.title(u"Метод линейного предсказания") 
+		plt.legend(loc='best')
+		plt.grid(True)
+		plt.show()
+
+	# Prediction error estimation
+	predict_error_abs = []; predict_error_rel = []
+	for i in xrange(num_signal_lengths):
+		for j in xrange(num_orders):
+			predict_error_abs.append(np.zeros(len(y) - signal_lengths[i]))
+			predict_error_rel.append(np.zeros(len(y) - signal_lengths[i]))
+			for k in xrange(len(y) - signal_lengths[i]):
+			# Pointers for different arrays
+				data_pointer = k + signal_lengths[i]; err_pointer = k; array_pointer = i * num_orders + j
+				predict_error_abs[array_pointer][err_pointer] = abs(y[data_pointer] - predict[i,j,data_pointer])
+				if y[data_pointer] != 0:
+					predict_error_rel[array_pointer][err_pointer] = 100 * predict_error_abs[array_pointer][err_pointer] / y[data_pointer]
+				else:
+					if predict[i,j,data_pointer] == 0:
+						predict_error_rel[array_pointer][err_pointer] = 0
+					else:
+						predict_error_rel[array_pointer][err_pointer] = 100	
+
+	mean_abs_error = []; mean_rel_error = []; std_abs_error = [];	std_rel_error = []
+	# Full version
+	#print "\nLag_length   Absolute_error  Absolute_error  Relative_error  Relative_error"
+	#print "                 (mean)        (std.dev)       (mean,%)        (std.dev)"
+	# Short output	
+	print "\nParameters   		            MAPE,%     Variation MAPE,%"
+	for i in xrange(num_signal_lengths):
+		for j in xrange(num_orders):
+			array_pointer = i * num_orders + j
+	#		mean_abs_error.append(np.mean(predict_error_abs[array_pointer]))
+	#		std_abs_error.append(np.std(predict_error_abs[array_pointer]))
+			mean_rel_error.append(np.mean(predict_error_rel[array_pointer]))
+			std_rel_error.append(np.std(predict_error_rel[array_pointer]))
+	#		print "Lag=%2i: %15.2f %15.2f %15.1f %15.1f" % (lag[i],mean_abs_error[i],std_abs_error[i],mean_rel_error[i],std_rel_error[i])
+			print "Signal_length %d, order %d: %15.2f %15.2f" % (signal_lengths[i], orders[j], mean_rel_error[array_pointer], std_rel_error[array_pointer])
+	print "\n"
+
+	# Save LP coefficients in file
+	if args.save != "":
+		# Open file
+		for i in xrange(num_signal_lengths):
+			for j in xrange(num_orders):
+				filename = args.save + "_ord%d_sig%d.dat" % (orders[j], signal_lengths[i])
+				outfile=open(filename, 'wb')
+#				title = "LP coefficients change during prediction"
+#				outfile.write(title + "\n")
+				for coeff in coefficients_array[i * num_orders + j]:
+					string = ""
+					for value in coeff:
+						string += str(value) + " "
+					outfile.write(string + "\n")
+				outfile.close()
+		print "Results are saved in correponding files."
+
+def polynome_test(x,y,args):
+	'''Test of polynome prediction with different powers'''
+	global colors
+	pinit=raw_input("Enter polynome powers separated by comma: ").split(',')
+	plist=[]
+	for i in pinit:
+		try:
+			plist.append(int(i))
+		except ValueError:
+			print "That`s not a good value for polynome power..."
+			continue
+	n=len(plist)	
+	if n<1:
+		print "Power list is empty! Game over."
+		exit(1)
+
+	# Extrapolation
+	# Extrapolation. To use or not to use?
+	if args.extrapolate:
+		predict_extrapolate=np.zeros((3,len(y)))
+		extrapow=['linear','quadratic','cubic']
+	# Initial history points for extrapolation	
+		for i in xrange(3):
+			predict_extrapolate[i,:4]=y[:4]
+	# Extrapolation procedure
+		for i in xrange(4,len(y)):
+			for p in xrange(3):
+				ext=InterpolatedUnivariateSpline(x[i-4:i],y[i-4:i],k=p+1)
+				expoint=ext(x[i])
+				if expoint>0:
+					predict_extrapolate[p,i]=expoint
+				else:
+					predict_extrapolate[p,i]=0
+
+
+	# Plot obtained results
+		for i in xrange(3):
+			plt.plot(x,predict_extrapolate[i,],colors[i+n],label="{}-extrapolation".format(extrapow[i]))
+
+	# Approximation
+	# Prediction data initialization
+	predict=np.zeros((n,len(y)))
+	lag=int(raw_input("Enter lag (number of \"history\" points): "))
+	if (lag<(max(plist)+1)):
+		print "Wrong lag value. Lag is set to {}.".format(max(plist)+1)
+		lag=max(plist)+1
+	plist.sort()
+	# Initial history points for prediction
+	for i in xrange(n):
+		predict[i,:lag]=y[:lag]
+
+	# Prediction procedure
+	for i in xrange(lag,len(y)):
+		for k in xrange(n):
+			approxpoint=np.polyval(np.polyfit(x[i-lag:i],y[i-lag:i],deg=plist[k]),x[i])
+			if approxpoint>0:
+				predict[k,i]=approxpoint
+			else:
+				predict[k,i]=0
+
+
+# Prediction error estimation
+# //todo: 
+# //exclude initial points from estimation!
+#
+	if args.extrapolate:
+		predict_error_abs=np.zeros((n+3,len(y)))
+		predict_error_rel=np.zeros((n+3,len(y)))
+		for i in xrange(n+3):
+			for j in xrange(len(y)):
+				if i<n:
+					predict_error_abs[i,j]=abs(y[j]-predict[i,j])
+					if y[j]!=0:
+						predict_error_rel[i,j]=100.0*predict_error_abs[i,j]/y[j]
+					else:
+						if predict[i,j]==0:
+							predict_error_rel[i,j]=0
+						else:
+							predict_error_rel[i,j]=100
+
+				else:
+					predict_error_abs[i,j]=abs(y[j]-predict_extrapolate[i-n,j])
+					if y[j]!=0:
+						predict_error_rel[i,j]=100.0*predict_error_abs[i,j]/y[j]
+					else:
+						if predict_extrapolate[i-n,j]==0:
+							predict_error_rel[i,j]=0
+						else:
+							predict_error_rel[i,j]=100
+	else:
+		predict_error_abs=np.zeros((n,len(y)))
+		predict_error_rel=np.zeros((n,len(y)))
+		for i in xrange(n):
+			for j in xrange(len(y)):
+				predict_error_abs[i,j]=abs(y[j]-predict[i,j])
+				if y[j]!=0:
+					predict_error_rel[i,j]=100*predict_error_abs[i,j]/y[j]
+				else:		
+					if predict[i,j]==0:
+						predict_error_rel[i,j]=0
+					else:
+						predict_error_rel[i,j]=100		
+
+	mean_abs_error=[]
+	mean_rel_error=[]
+	std_abs_error=[]
+	std_rel_error=[]
+	print "\nApproximation      absolute error  absolute error  relative error  relative error"
+	print "   type      	       (mean)        (std.dev)	      (mean,%)	     (std.dev)"
+	num=predict_error_abs.shape[0]
+	if args.extrapolate:
+		for i in xrange(num-3):
+			mean_abs_error.append(np.mean(predict_error_abs[i]))
+			std_abs_error.append(np.std(predict_error_abs[i]))
+			mean_rel_error.append(np.mean(predict_error_rel[i]))
+			std_rel_error.append(np.std(predict_error_rel[i]))
+			print "%i-approximation: %12.2f %14.2f %14.1f %14.1f" % (plist[i],mean_abs_error[i],std_abs_error[i],mean_rel_error[i],std_rel_error[i])
+		for i in xrange(num-3,num):
+			mean_abs_error.append(np.mean(predict_error_abs[i]))
+			std_abs_error.append(np.std(predict_error_abs[i]))
+			mean_rel_error.append(np.mean(predict_error_rel[i]))
+			std_rel_error.append(np.std(predict_error_rel[i]))
+			print "%i-extrapolation: %12.2f %14.2f %14.1f %14.1f" % (i+1-n,mean_abs_error[i],std_abs_error[i],mean_rel_error[i],std_rel_error[i])
+
+	else:
+		for i in xrange(num):
+			mean_abs_error.append(np.mean(predict_error_abs[i]))
+			std_abs_error.append(np.std(predict_error_abs[i]))
+			mean_rel_error.append(np.mean(predict_error_rel[i]))
+			std_rel_error.append(np.std(predict_error_rel[i]))
+			print "%i-approximation: %12.2f %14.2f %14.1f %14.1f" % (plist[i],mean_abs_error[i],std_abs_error[i],mean_rel_error[i],std_rel_error[i])
+	print "\n"
+
+	# Save results in file
+	if args.save!="":
+		# Choose splitter
+		if args.space:
+			splitter=" "
+		else:
+			splitter=","
+		# Open file
+		outfile=open(args.save,'wb')
+		title="Approximation by different polynomes with lag {}".format(lag)
+		outfile.write(title+"\n")
+		# Have we got any extrapolation data? Yes...
+		if args.extrapolate:
+			head="x"+splitter+"y"
+			for s in xrange(n):
+				head+=splitter+str(plist[s])+"-approx"
+			head+=splitter+"lin-ex"+splitter+"quad-ex"+splitter+"cubic-ex"
+			outfile.write(head+"\n")
+			for r in xrange(len(x)):
+				string=str(x[r])+splitter+str(y[r])
+				for c in xrange(n):
+					string+=splitter+str(predict[c,r])
+				string+=splitter+str(predict_extrapolate[0,r])+splitter+str(predict_extrapolate[1,r])+splitter+str(predict_extrapolate[2,r])
+				outfile.write(string+"\n")
+		# No, we haven`t :)
+		else:
+			head="x"+splitter+"y"
+			for s in xrange(n):
+				head+=splitter+str(plist[s])+"-approx"
+			outfile.write(head+"\n")
+			for r in xrange(len(x)):
+				string=str(x[r])+splitter+str(y[r])
+				for c in xrange(n):
+					string+=splitter+str(predict[c,r])
+				outfile.write(string+"\n")	
+		outfile.close()
+
+	# Plot obtained results
+	if args.plot:
+		for i in xrange(n):
+			plt.plot(x,predict[i,],colors[i],label=u"{}-аппроксимация".format(plist[i]))
+		plt.plot(x,y,colors[9],label=u"Исходный")
+		plt.xlabel(u'Время')
+		plt.ylabel(u'Интенсивность трафика')
+		plt.title(u"Предсказание с помощью аппроксимации {}-го порядка".format(lag)) 
+		plt.legend(loc='best')
+		plt.grid(True)
+		plt.show()
+
+def lag_test(x,y,args):
+	'''Test prediction with different lag-size (i.e. number of history points)'''
+	global colors
+	p=int(raw_input("Enter approximation polynome power (>=1): "))
+	llist=raw_input("Enter lag values separated by comma (>=power+1): ").split(',')
+	lag=[]
+	for i in llist:
+		try:
+			lag.append(int(i))
+		except ValueError:
+			print "Damn it! That`s not a good value for lag, man..."
+			continue
+	n=len(lag)	
+	if n<1:
+		print "Lag list is empty! Game over."
+		exit(1)
+
+# Approximation
+	# Prediction data initialization
+	predict=np.zeros((n,len(x)))
+	lag.sort()
+
+	# Initial history points for prediction
+	for i in xrange(n):
+		predict[i,:lag[i]]=y[:lag[i]]
+	
+	# Prediction procedure
+	for i in xrange(n):
+		for k in xrange(lag[i],len(x)):
+			approxpoint=np.polyval(np.polyfit(x[k-lag[i]:k],y[k-lag[i]:k],deg=p),x[k])
+			if approxpoint>0:
+				predict[i,k]=approxpoint
+			else:
+				predict[i,k]=0			
+
+# Error estimation procedure. Only predicted values are taken into account, no initial points!
+	predict_error_abs=[]; predict_error_rel=[]
+	for i in xrange(n):
+		predict_error_abs.append(np.zeros(len(y)-lag[i]))
+		predict_error_rel.append(np.zeros(len(y)-lag[i]))
+		for j in xrange(len(y)-lag[i]):
+			predict_error_abs[i][j]=abs(y[j+lag[i]]-predict[i,j+lag[i]])
+			if y[j+lag[i]]!=0:
+				predict_error_rel[i][j]=100*predict_error_abs[i][j]/y[j+lag[i]]
+			else:		
+				if predict[i,j+lag[i]]==0:
+					predict_error_rel[i][j]=0
+				else:
+					predict_error_rel[i][j]=100
+
+	mean_abs_error=[]
+	mean_rel_error=[]
+	std_abs_error=[]
+	std_rel_error=[]
+	print "\nLag_length   Absolute_error  Absolute_error  Relative_error  Relative_error"
+	print "                 (mean)        (std.dev)       (mean,%)        (std.dev)"
+	for i in xrange(n):
+		mean_abs_error.append(np.mean(predict_error_abs[i]))
+		std_abs_error.append(np.std(predict_error_abs[i]))
+		mean_rel_error.append(np.mean(predict_error_rel[i]))
+		std_rel_error.append(np.std(predict_error_rel[i]))
+		print "Lag=%2i: %15.2f %15.2f %15.1f %15.1f" % (lag[i],mean_abs_error[i],std_abs_error[i],mean_rel_error[i],std_rel_error[i])
+	print "\n"
+
+# Save results in file
+	if args.save!="":
+		# Choose splitter
+		if args.space:
+			splitter=" "
+		else:
+			splitter=","
+		# Open file
+		outfile=open(args.save,'wb')
+		title="Approximation by {}-power polynome with different lags".format(p)
+		outfile.write(title+"\n")
+		head="x"+splitter+"y"
+		for s in xrange(n):
+			head+=splitter+str(lag[s])+"-lag"
+		outfile.write(head+"\n")
+		for r in xrange(len(x)):
+			string=str(x[r])+splitter+str(y[r])
+			for c in xrange(n):
+				string+=splitter+str(predict[c,r])
+			outfile.write(string+"\n")	
+		outfile.close()
+
+# Plot obtained results
+	if args.plot:
+		for i in xrange(n):
+			plt.plot(x,predict[i,],colors[i],label=u"Интервал {}".format(lag[i]))
+		plt.plot(x,y,colors[9],label=u"Исходный")
+		plt.xlabel(u'Время')
+		plt.ylabel(u'Интенсивность трафика')
+		plt.title(u"Предсказание с помощью аппроксимации {}-го порядка".format(p)) 
+		plt.legend(loc='best')
+		plt.grid(True)
+		plt.show()
+
+def sp5point(points):
+	'''Returns next point of the trend, obtained from given 5 points list (Spencer 5-point)'''
+	p = [-28, 77, -28, -98, 112]; s = 0
+	if len(points) != 5:
+		print "Spencer 5-point procedure: Wrong number of points!"
+		exit(1)
+	for i in xrange(len(points)):
+		s += points[i] * p[i]
+	return s / 35
+
+def sp7point(points):
+	'''Returns next point of the trend, obtained from given 7 points list (Spencer 7-point)'''
+	p = [-12, 18, 12, -9, -24, -12, 48]; s = 0
+	if len(points) != 7:
+		print "Spencer 7-point procedure: Wrong number of points!"
+		exit(1)
+	for i in xrange(len(points)):
+		s += points[i] * p[i]
+	return s / 21
+
+def spencer(x, y, args):
+	'''Prediction by obtaining trend with Spencer methods (5- and 7-point)'''
+	global colors
+	# Prediction array initialization
+	predict = np.zeros((2, len(x)))
+	# Initial history points for prediction
+	predict[0, :5] = y[:5]
+	predict[1, :7] = y[:7]
+	# Prediction, method: 5-point
+	for k in xrange(5, len(x)):
+		approxpoint = sp5point(y[k - 5 : k])
+		if approxpoint > 0:
+			predict[0, k] = approxpoint
+		else:
+			predict[0, k] = 0
+	# Prediction, method: 7-point
+	for k in xrange(7, len(x)):
+		approxpoint = sp7p3oint(y[k - 7 : k])
+		if approxpoint > 0:
+			predict[1, k] = approxpoint
+		else:
+			predict[1, k] = 0
+
+	# Error estimation procedure. Only predicted values are taken into account, no initial points!
+	# Inintialize error arrays
+	predict_error_abs_5p = np.zeros(len(y) - 5)
+	predict_error_rel_5p = np.zeros(len(y) - 5)	
+	predict_error_abs_7p = np.zeros(len(y) - 7)
+	predict_error_rel_7p = np.zeros(len(y) - 7)
+	# Error calculation for 5-point method
+	for i in xrange(len(y) - 5):
+		predict_error_abs_5p[i] = abs(y[i+5] - predict[0, i+5])
+		if y[i+5] != 0:
+			predict_error_rel_5p[i] = 100 * predict_error_abs_5p[i] / y[i+5]
+		else:
+			if predict[0, i+5] == 0:
+				predict_error_rel_5p[i] = 0
+			else:
+				predict_error_rel_5p[i] = 100
+	# Error calculation for 7-point method
+	for i in xrange(len(y) - 7):
+		predict_error_abs_7p[i]=abs(y[i+7] - predict[1, i+7])
+		if y[i+7] != 0:
+			predict_error_rel_7p[i] = 100 * predict_error_abs_7p[i] / y[i+7]
+		else:
+			if predict[1, i+7] == 0:
+				predict_error_rel_7p[i] = 0
+			else:
+				predict_error_rel_7p[i] = 100
+	# Calculate error statistics:
+	# - for 5-point method 
+	mean_abs_error_5p = np.mean(predict_error_abs_5p)
+	mean_rel_error_5p = np.mean(predict_error_rel_5p)
+	std_abs_error_5p = np.std(predict_error_abs_5p)
+	std_rel_error_5p = np.std(predict_error_rel_5p)
+	# - for 7-point method 
+	mean_abs_error_7p = np.mean(predict_error_abs_7p)
+	mean_rel_error_7p = np.mean(predict_error_rel_7p)
+	std_abs_error_7p = np.std(predict_error_abs_7p)
+	std_rel_error_7p = np.std(predict_error_rel_7p)
+	
+	# Print results
+	print "\nLag_length   Absolute_error  Absolute_error  Relative_error  Relative_error"
+	print "                 (mean)        (std.dev)       (mean,%)        (std.dev)"
+	print "5-point: %15.2f %15.2f %15.1f %15.1f" % (mean_abs_error_5p,std_abs_error_5p,mean_rel_error_5p,std_rel_error_5p)
+	print "7-point: %15.2f %15.2f %15.1f %15.1f" % (mean_abs_error_7p,std_abs_error_7p,mean_rel_error_7p,std_rel_error_7p)
+
+# Plot results
+	if args.plot:
+		plt.plot(x, predict[0,], colors[1], label=u"5 точек")
+		plt.plot(x, predict[1,], colors[2], label=u"7 точек")
+		plt.plot(x, y, colors[9], label=u"Исходный")
+		plt.xlabel(u'Время')
+		plt.ylabel(u'Интенсивность трафика')
+		plt.title(u"Предсказание с помощью процедуры Спенсера") 
+		plt.legend(loc='best')
+		plt.grid(True)
+		plt.show()
+	exit(0)
+
+
+############ Main()
+# Utility options
+parser = argparse.ArgumentParser(description='Utility is intended to test different traffic prediction functions in LBO.')
+parser.add_argument('file',help='File with original traffic trace data')
+#parser.add_argument("-a","--animate",action="store_true",help="Save animation of LP coefficients spectrum change")
+parser.add_argument("-e","--extrapolate",action="store_true",help="use additional 1,2,3-power extrapolation in polynome-test")
+#parser.add_argument("-n",type=int,default=2,help="number of experiments")
+parser.add_argument("-p","--plot",action="store_true",help="plot obtained results")
+parser.add_argument("-r",default="",help="time range to simulate, sec: start-finish (i.e. 0.2-17.65)")
+parser.add_argument("-s","--save",default="",help="save obtained results to file")
+parser.add_argument("--space",action="store_true",help="used to separate values in file by whitespaces. By default \
+					commas are used.")
+parser.add_argument("-t","--type",default="polynome",help="type of experiment (default test is polynome)",choices=["polynome", "ES", "lag", "LP", "spencer"])
+args = parser.parse_args()
+
+# Color list
+colors = ('b','g','r','c','m','y','k','*','o','--')
+
+# Load data from file
+xl = []; yl = []; i = 0
+fd = open(args.file,'rb')
+c = csv.reader(fd)
+for row in c:
+	i += 1
+	if len(row) != 0:
+		try:
+			xl.append(float(row[0]))
+			yl.append(float(row[1]))
+		except ValueError:
+			print "Inappropriate data detected in row {}: {}!".format(i,row)
+	else:
+		print "String {} is empty!".format(i)
+
+# Check obtained arrays for length equality
+if (len(xl) != len(yl)):
+	print "Wrong input data!"
+	exit(1)
+
+# Take chosen range from whole trace
+if (args.r == ""):
+	x = np.asarray(xl)
+	y = np.asarray(yl)
+else:
+# Time interval to operate
+	time = args.r.split('-')
+	if (len(time) != 2):
+		print "Wrong time range!"
+		exit(1)
+	try:
+		t_start = float(time[0])
+		t_stop = float(time[1])
+	except:
+		print "Wrong time format!"
+		exit(1)
+	if (t_start >= max(xl) or t_stop <= min(xl)):
+			print "Wrong time range defined: out of time range in file!"
+			exit(1)
+	for t in xl:
+		if t >= t_start:
+			i_start = xl.index(t)
+			break
+		
+	for t in xl:
+		if t >= t_stop:
+			i_stop = xl.index(t) + 1
+			break
+	x = np.array(xl[i_start:i_stop])
+	y = np.array(yl[i_start:i_stop])
+
+# Run chosen type of test
+if (args.type == "polynome"):
+	print "Experiment with various power polynome and constant lag"
+	polynome_test(x, y, args)
+
+elif (args.type == "ES"):
+	print "Experiment with 3 different exponential smoothing models"
+	exp_smoothing(x, y, args)
+
+elif (args.type == "lag"):
+	print "Experiment with constant power polynome and different lags"
+	lag_test(x, y, args)
+
+elif (args.type == "LP"):
+	print "LP procedure with various orders and correlation matrix sizes"
+	LP(x, y, args)
+
+elif (args.type == "spencer"):
+	print "Experiment with 5-point and 7-point Spencer`s smoothing formula"
+	spencer(x, y, args)
+
+else:
+	print "Wrong experiment type!"
+
+
