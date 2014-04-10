@@ -9,12 +9,17 @@ from scipy.interpolate import InterpolatedUnivariateSpline
 font = {'family': 'Times New Roman', 'weight': 'normal', 'size': '14.0'}
 plt.rc('font', **font)
 
+
 def exp_smoothing(x, y, args):
 	'''Test of three kinds of exponential smoothing models: SES, ES_A and ES_DA.
 	Smoothing coefficient is adjusted on every step with Nelder-Mead minimization of 
 	squared error of last prediction.
 	'''
 	from scipy.optimize import minimize
+	
+	# Should we restrict smoothing parameters (True) or not (False)? Constraints: 0 < parameter < 1
+	use_constraints = True
+
 
 	def SES(alpha, x_current, s_previous):
 		'''Simple exponential smoothing
@@ -36,85 +41,155 @@ def exp_smoothing(x, y, args):
 		t_current = gamma * (s_current - s_previous) + (1 - gamma) * phi * t_previous
 		return s_current + phi * t_current, s_current, t_current
 
+	# Models with multiplicative trends: ES-M and ES-DM
+	#def ES_M((alpha, gamma), x_current, s_previous, r_previous):
+	#	'''Exponential smoothing with multiplicative trend
+	#	'''
+	#	s_current = alpha * x_current + (1 - alpha) * (s_previous * r_previous)
+	#	r_current = gamma * (s_current / s_previous) + (1 - gamma) * r_previous
+	#	return s_current * r_current, s_current, r_current
+	#def ES_DM((alpha, gamma, phi), x_current, s_previous, r_previous):
+	#	'''Exponential smoothing with damped multiplicative trend
+	#	'''
+	#	s_current = alpha * x_current + (1 - alpha) * (s_previous * pow(r_previous, phi))
+	#	r_current = gamma * (s_current / s_previous) + (1 - gamma) * pow(r_previous, phi)
+	#	return s_current * pow(r_current, phi), s_current, r_current
+
+
 	def squared_error(parameters, y_current, y_previous, s, t=0, model='SES'):
-		'''Squared error of one-step prediction
+		'''Summarized squared error of exponential smoothing prediction
 		'''
-		sse = 0
+		sse = 0; data_length = len(y_current)
+		
 		if model == 'SES':
-			sse = pow((y_current - SES(parameters, y_previous, s)[0]), 2)
+			assert(data_length == len(y_previous) == len(s))
+			for i in xrange(data_length):
+				sse += pow((y_current[i] - SES(parameters, y_previous[i], s[i])[0]), 2)
+		
 		elif model == 'ES_A':
-			sse = pow((y_current - ES_A(parameters, y_previous, s, t)[0]), 2)
+			assert(data_length == len(y_previous) == len(s) == len(t))
+			for i in xrange(data_length):
+				sse += pow((y_current[i] - ES_A(parameters, y_previous[i], s[i], t[i])[0]), 2)
+
 		elif model == 'ES_DA':
-			sse = pow((y_current - ES_DA(parameters, y_previous, s, t)[0]), 2)
-		return sse
+			assert(data_length == len(y_previous) == len(s) == len(t))
+			for i in xrange(data_length):
+				sse += pow((y_current[i] - ES_DA(parameters, y_previous[i], s[i], t[i])[0]), 2)
+
+		return sse / data_length
+
 
 	def param_optimization(initial_parameters, y_current, y_previous, s, t=0, model='SES'):
 		'''Adjusts smoothing, trend and damping coefficients, minimizing the square of last prediction error
 		'''
-
 		if model == 'SES':
 			# Find optimal alpha value (nelder-mead). For debug add option <'disp': 'True'>
-			result = minimize(squared_error, initial_parameters, args=(y_current, y_previous, s, model), method='nelder-mead', options={'maxiter': '100', 'disp': 'True'}) 
+			result = minimize(squared_error, initial_parameters, args=(y_current, y_previous, s, model), method='nelder-mead', options={'maxiter': '500'}) 
 		elif model == 'ES_A':
 			# Find optimal alpha and gamma values
-			result = minimize(squared_error, initial_parameters, args=(y_current, y_previous, s, t, model), method='nelder-mead', options={'maxiter': '100', 'disp': 'True'}) 
+			result = minimize(squared_error, initial_parameters, args=(y_current, y_previous, s, t, model), method='nelder-mead', options={'maxiter': '500'}) 
 		elif model == 'ES_DA':
 			# Find optimal alpha, gamma and phi values
-			result = minimize(squared_error, initial_parameters, args=(y_current, y_previous, s, t, model), method='nelder-mead', options={'maxiter': '100', 'disp': 'True'}) 
+			result = minimize(squared_error, initial_parameters, args=(y_current, y_previous, s, t, model), method='nelder-mead', options={'maxiter': '500'}) 
 		else:
 			print "Error! Wrong model type!"
 			exit(1)
 
 		# Check alpha constraints
-		if result.x[0] < 0:
-			result.x[0] = 0
-		elif result.x[0] > 1:
-			result.x[0] = 1
+		if use_constraints:
+			for i in xrange(len(result.x)):
+				if result.x[i] < 0:
+					result.x[i] = 0
+				elif result.x[i] > 1:
+					result.x[i] = 1
 
 		return result.x
 
-
 	# Prediction data initialization
-	predict = np.zeros((3, len(y)))
-	pr_models = [u"Модель SES", u"Модель ES-A", u"Модель ES-DA"]
+	predict = np.zeros((6, len(y)))
+	pr_models = [u"Модель SES. Пошаговая оценка     ", u"Модель ES-A. Пошаговая оценка    ", u"Модель ES-DA. Пошаговая оценка   ", u"Модель SES. Интервальная оценка  ", u"Модель ES-A. Интервальная оценка ", u"Модель ES-DA. Интервальная оценка"]
 	
-	# Parameters initializing 
+	# Parameters initializing
+	# Parameters estimation interval 
+	pe_interval = int(raw_input("Input analyzed interval length: "))
+
 	# Initial values in predicted array
-	for i in xrange(3):
-		predict[i,:2] = y[:2]
+	for i in xrange(6):
+		predict[i,:pe_interval + 2] = y[:pe_interval + 2]
+
 	# Models initial parameters
 	alpha_SES = np.zeros(len(y)); alpha_ES_A = np.zeros(len(y)); alpha_ES_DA = np.zeros(len(y))
-	alpha_SES[1] = alpha_ES_A[1] = alpha_ES_DA[1] = 0.2
+	alpha_SES[:pe_interval+2] = alpha_ES_A[:pe_interval+2] = alpha_ES_DA[:pe_interval+2] = np.repeat(0.2, pe_interval+2)
 	gamma_ES_A = np.zeros(len(y)); gamma_ES_DA = np.zeros(len(y))
-	gamma_ES_A[1] = gamma_ES_DA[1] = 1
+	gamma_ES_A[:pe_interval+2] = gamma_ES_DA[:pe_interval+2] = np.repeat(1.0, pe_interval+2)
 	phi_ES_DA = np.zeros(len(y));
-	phi_ES_DA[1] = 0.5
+	phi_ES_DA[:pe_interval+2] = np.repeat(0.5, pe_interval+2)
+
+	alpha_SES_pe = np.zeros(len(y)); alpha_ES_A_pe = np.zeros(len(y)); alpha_ES_DA_pe = np.zeros(len(y))
+	alpha_SES_pe[:pe_interval+2] = alpha_ES_A_pe[:pe_interval+2] = alpha_ES_DA_pe[:pe_interval+2] = np.repeat(0.2, pe_interval+2)
+	gamma_ES_A_pe = np.zeros(len(y)); gamma_ES_DA_pe = np.zeros(len(y))
+	gamma_ES_A_pe[:pe_interval+2] = gamma_ES_DA_pe[:pe_interval+2] = np.repeat(1.0, pe_interval+2)
+	phi_ES_DA_pe = np.zeros(len(y));
+	phi_ES_DA_pe[:pe_interval+2] = np.repeat(0.5, pe_interval+2)
+
 	# Smoothed and trend initial values
 	s_ses = np.zeros(len(y)); s_es_a = np.zeros(len(y)); s_es_da = np.zeros(len(y))
-	s_ses[0] = s_es_a[0] = s_es_da[0] = y[0]
-	s_ses[1] = s_es_a[1] = s_es_da[1] = y[1]
 	t_es_a = np.zeros(len(y)); t_es_da = np.zeros(len(y))
-	t_es_a[1] = t_es_da[1] = y[1] - y[0]
+	s_ses[:pe_interval+2] = s_es_a[:pe_interval+2] = s_es_da[:pe_interval+2] = np.mean(y[:pe_interval+2])
+	t_es_a[:pe_interval+2] = t_es_da[:pe_interval+2] = (y[pe_interval + 2] - y[0]) / (pe_interval + 2)
+
+	s_ses_pe = np.zeros(len(y)); s_es_a_pe = np.zeros(len(y)); s_es_da_pe = np.zeros(len(y))
+	t_es_a_pe = np.zeros(len(y)); t_es_da_pe = np.zeros(len(y))
+	s_ses_pe[:pe_interval+2] = s_es_a_pe[:pe_interval+2] = s_es_da_pe[:pe_interval+2] = np.mean(y[:pe_interval+2])
+	t_es_a_pe[:pe_interval+2] = t_es_da_pe[:pe_interval+2] = (y[pe_interval + 2] - y[0]) / (pe_interval + 2)
 
 
 	# Prediction procedure
-	for i in xrange(2, len(y) - 1):
+	for i in xrange(pe_interval + 1, len(y) - 1):
+		# Every-step estimation
 		# SES prediction
-		alpha_SES[i] = param_optimization(alpha_SES[i-1], y[i], y[i-1], s_ses[i-2], model='SES')
+		alpha_SES[i] = param_optimization(alpha_SES[i-1], y[i-pe_interval+1:i+1], y[i-pe_interval:i], s_ses[i-pe_interval-1:i-1], model='SES')
 		predict[0, i+1], s_ses[i] = SES(alpha_SES[i], y[i], s_ses[i-1])
 		
 		# ES_A prediction
-		alpha_ES_A[i], gamma_ES_A[i] = param_optimization(np.asarray([alpha_ES_A[i-1], gamma_ES_A[i-1]]), y[i-1], s_es_a[i-2], t_es_a[i-2], model='ES_A')
+		alpha_ES_A[i], gamma_ES_A[i] = param_optimization(np.asarray([alpha_ES_A[i-1], gamma_ES_A[i-1]]), y[i-pe_interval+1:i+1], y[i-pe_interval:i], s_es_a[i-pe_interval-1:i-1], t_es_a[i-pe_interval-1:i-1], model='ES_A')
 		predict[1, i+1], s_es_a[i], t_es_a[i] = ES_A((alpha_ES_A[i], gamma_ES_A[i]), y[i], s_es_a[i-1], t_es_a[i-1])
 
 		# ES_DA prediction
-		alpha_ES_DA[i], gamma_ES_DA[i], phi_ES_DA[i] = param_optimization(np.asarray([alpha_ES_DA[i-1], gamma_ES_DA[i-1], phi_ES_DA[i-1]]), y[i-1], s_es_da[i-2], t_es_da[i-2], model='ES_DA')
+		alpha_ES_DA[i], gamma_ES_DA[i], phi_ES_DA[i] = param_optimization(np.asarray([alpha_ES_DA[i-1], gamma_ES_DA[i-1], phi_ES_DA[i-1]]), y[i-pe_interval+1:i+1], y[i-pe_interval:i], s_es_da[i-pe_interval-1:i-1], t_es_da[i-pe_interval-1:i-1], model='ES_DA')
 		predict[2, i+1], s_es_da[i], t_es_da[i] = ES_DA((alpha_ES_DA[i], gamma_ES_DA[i], phi_ES_DA[i]), y[i], s_es_da[i-1], t_es_da[i-1])
 
+		# Per-interval estimation
+		if (i - 1) % pe_interval == 0:
+			# Estimate parameters
+			alpha_SES_pe[i] = param_optimization(alpha_SES_pe[i-1], y[i-pe_interval+1:i+1], y[i-pe_interval:i], s_ses[i-pe_interval-1:i-1], model='SES')
+			alpha_ES_A_pe[i], gamma_ES_A_pe[i] = param_optimization(np.asarray([alpha_ES_A_pe[i-1], gamma_ES_A_pe[i-1]]), y[i-pe_interval+1:i+1], y[i-pe_interval:i], s_es_a[i-pe_interval-1:i-1], t_es_a[i-pe_interval-1:i-1], model='ES_A')
+			alpha_ES_DA_pe[i], gamma_ES_DA_pe[i], phi_ES_DA_pe[i] = param_optimization(np.asarray([alpha_ES_DA_pe[i-1], gamma_ES_DA_pe[i-1], phi_ES_DA_pe[i-1]]), y[i-pe_interval+1:i+1], y[i-pe_interval:i], s_es_da[i-pe_interval-1:i-1], t_es_da[i-pe_interval-1:i-1], model='ES_DA')
+			# Set parameters for the next period
+			array_tail = len(y) - i
+			if array_tail > pe_interval:
+				alpha_SES_pe[i:i+pe_interval] = np.repeat(alpha_SES_pe[i], pe_interval)
+				alpha_ES_A_pe[i:i+pe_interval] = np.repeat(alpha_ES_A_pe[i], pe_interval)
+				alpha_ES_DA_pe[i:i+pe_interval] = np.repeat(alpha_ES_DA_pe[i], pe_interval)
+				gamma_ES_A_pe[i:i+pe_interval] = np.repeat(gamma_ES_A_pe[i], pe_interval)
+				gamma_ES_DA_pe[i:i+pe_interval] = np.repeat(gamma_ES_DA_pe[i], pe_interval)
+				phi_ES_DA_pe[i:i+pe_interval] = np.repeat(phi_ES_DA_pe[i], pe_interval)
+			else:
+				alpha_SES_pe[i:i+array_tail] = np.repeat(alpha_SES_pe[i], array_tail)
+				alpha_ES_A_pe[i:i+array_tail] = np.repeat(alpha_ES_A_pe[i], array_tail)
+				alpha_ES_DA_pe[i:i+array_tail] = np.repeat(alpha_ES_DA_pe[i], array_tail)
+				gamma_ES_A_pe[i:i+array_tail] = np.repeat(gamma_ES_A_pe[i], array_tail)
+				gamma_ES_DA_pe[i:i+array_tail] = np.repeat(gamma_ES_DA_pe[i], array_tail)
+				phi_ES_DA_pe[i:i+array_tail] = np.repeat(phi_ES_DA_pe[i], array_tail)
+
+		# Predictions
+		predict[3, i+1], s_ses_pe[i] = SES(alpha_SES_pe[i], y[i], s_ses_pe[i-1])
+		predict[4, i+1], s_es_a_pe[i], t_es_a_pe[i] = ES_A((alpha_ES_A_pe[i], gamma_ES_A_pe[i]), y[i], s_es_a_pe[i-1], t_es_a_pe[i-1])
+		predict[5, i+1], s_es_da_pe[i], t_es_da_pe[i] = ES_DA((alpha_ES_DA_pe[i], gamma_ES_DA_pe[i], phi_ES_DA_pe[i]), y[i], s_es_da_pe[i-1], t_es_da_pe[i-1])
 
 	# Error estimation
-	predict_error_abs = np.zeros((3, len(y))); predict_error_rel = np.zeros((3, len(y)))
-	for i in xrange(3):
+	predict_error_abs = np.zeros((6, len(y))); predict_error_rel = np.zeros((6, len(y)))
+	for i in xrange(6):
 		for j in xrange(len(y)):
 			predict_error_abs[i, j] = abs(y[i] - predict[i, j])
 			if y[i] != 0:
@@ -128,19 +203,19 @@ def exp_smoothing(x, y, args):
 	# Mean error and variance calculation
 	#mean_abs_error = []; std_abs_error = []
 	mean_rel_error = []; std_rel_error = []
-	print "Prediction model		MAPE,%     Variation MAPE,%"
-	for i in xrange(3):
+	line_separator = "------------------------------------------------------------------------"
+	print "{}\nPrediction model			    MAPE,%     Variation MAPE,%\n{}".format(line_separator, line_separator)
+	for i in xrange(6):
 		mean_rel_error.append(np.mean(predict_error_rel[i]))
 		std_rel_error.append(np.std(predict_error_rel[i]))
-		print "%s: %15.2f %15.2f" % (pr_models[i], mean_rel_error[i], std_rel_error[i])
-	print "\n"
-
+		print "%s %15.2f %15.2f" % (pr_models[i], mean_rel_error[i], std_rel_error[i])
+	print line_separator
 
 	# Plot results
 	if args.plot:
 		# Plot prediction results
 		fig1 = plt.figure()
-		for i in xrange(3):
+		for i in xrange(6):
 			plt.plot(x, predict[i], label=pr_models[i])
 		plt.plot(x, y, colors[-1], label=u"Исходный")
 		plt.xlabel(u'Время')
@@ -153,7 +228,7 @@ def exp_smoothing(x, y, args):
 
 		# Plot SES-model parameter evolution
 		fig2 = plt.figure()
-		plt.plot(x, alpha_SES, label=u"Коэффициент сглаживания")
+		plt.plot(x[:-1], alpha_SES[:-1], label=u"Коэффициент сглаживания")
 		plt.xlabel(u'Время')
 		plt.ylabel(u'Значение параметра')
 		plt.title(u"Модель SES. Эволюция параметров") 
@@ -162,11 +237,10 @@ def exp_smoothing(x, y, args):
 		if args.save != "":
 			plt.savefig(args.save + "-SES.png", dpi=300)
 
-
 		# Plot ES_A-model parameter evolution
 		fig3 = plt.figure()
-		plt.plot(x, alpha_ES_A, label=u"Коэффициент сглаживания")
-		plt.plot(x, gamma_ES_A, label=u"Сглаживание тренда")
+		plt.plot(x[:-1], alpha_ES_A[:-1], label=u"Коэффициент сглаживания")
+		plt.plot(x[:-1], gamma_ES_A[:-1], label=u"Сглаживание тренда")
 		plt.xlabel(u'Время')
 		plt.ylabel(u'Значение параметра')
 		plt.title(u"Модель ES-A. Эволюция параметров") 
@@ -175,11 +249,11 @@ def exp_smoothing(x, y, args):
 		if args.save != "":
 			plt.savefig(args.save + "-ES-A.png", dpi=300)
 
-		# Plot ES_A-model parameter evolution
+		# Plot ES_DA-model parameter evolution
 		fig4 = plt.figure()
-		plt.plot(x, alpha_ES_DA, label=u"Коэффициент сглаживания")
-		plt.plot(x, gamma_ES_DA, label=u"Сглаживание тренда")
-		plt.plot(x, phi_ES_DA, label=u"Параметр демпфирования")
+		plt.plot(x[:-1], alpha_ES_DA[:-1], label=u"Коэффициент сглаживания")
+		plt.plot(x[:-1], gamma_ES_DA[:-1], label=u"Сглаживание тренда")
+		plt.plot(x[:-1], phi_ES_DA[:-1], label=u"Параметр демпфирования")
 		plt.xlabel(u'Время')
 		plt.ylabel(u'Значение параметра')
 		plt.title(u"Модель ES-DA. Эволюция параметров") 
@@ -188,10 +262,45 @@ def exp_smoothing(x, y, args):
 		if args.save != "":
 			plt.savefig(args.save + "-ES-DA.png", dpi=300)
 			print "Results are saved in correponding files."
+
+		# Plot SES-PE-model parameter evolution
+		fig5 = plt.figure()
+		plt.plot(x[:-1], alpha_SES_pe[:-1], label=u"Коэффициент сглаживания")
+		plt.xlabel(u'Время')
+		plt.ylabel(u'Значение параметра')
+		plt.title(u"Модель SES-PE. Эволюция параметров") 
+		plt.legend(loc='best')
+		plt.grid(True)
+		if args.save != "":
+			plt.savefig(args.save + "-SES-PE.png", dpi=300)
+
+		# Plot ES_A-PE-model parameter evolution
+		fig6 = plt.figure()
+		plt.plot(x[:-1], alpha_ES_A_pe[:-1], label=u"Коэффициент сглаживания")
+		plt.plot(x[:-1], gamma_ES_A_pe[:-1], label=u"Сглаживание тренда")
+		plt.xlabel(u'Время')
+		plt.ylabel(u'Значение параметра')
+		plt.title(u"Модель ES-A-PE. Эволюция параметров") 
+		plt.legend(loc='best')
+		plt.grid(True)
+		if args.save != "":
+			plt.savefig(args.save + "-ES-A-PE.png", dpi=300)
+
+		# Plot ES_DA-PE-model parameter evolution
+		fig7 = plt.figure()
+		plt.plot(x[:-1], alpha_ES_DA_pe[:-1], label=u"Коэффициент сглаживания")
+		plt.plot(x[:-1], gamma_ES_DA_pe[:-1], label=u"Сглаживание тренда")
+		plt.plot(x[:-1], phi_ES_DA_pe[:-1], label=u"Параметр демпфирования")
+		plt.xlabel(u'Время')
+		plt.ylabel(u'Значение параметра')
+		plt.title(u"Модель ES-DA-PE. Эволюция параметров") 
+		plt.legend(loc='best')
+		plt.grid(True)
+		if args.save != "":
+			plt.savefig(args.save + "-ES-DA-PE.png", dpi=300)
+			print "Results are saved in correponding files."
+
 		plt.show()
-
-		
-
 
 
 def LP(x, y, args):
@@ -233,7 +342,6 @@ def LP(x, y, args):
 	for i in xrange(num_signal_lengths):
 		for j in xrange(num_orders):
 			predict[i,j,:signal_lengths[i]]=y[:signal_lengths[i]]
-
 
 	# Prediction procedure
 	for i in xrange(num_signal_lengths):
@@ -286,8 +394,9 @@ def LP(x, y, args):
 	# Full version
 	#print "\nLag_length   Absolute_error  Absolute_error  Relative_error  Relative_error"
 	#print "                 (mean)        (std.dev)       (mean,%)        (std.dev)"
-	# Short output	
-	print "\nParameters   		            MAPE,%     Variation MAPE,%"
+	# Short output
+	line_separator = "------------------------------------------------------------------------"
+	print "{}\nParameters   		             MAPE,%     Variation MAPE,%\n{}".format(line_separator, line_separator)
 	for i in xrange(num_signal_lengths):
 		for j in xrange(num_orders):
 			array_pointer = i * num_orders + j
@@ -297,7 +406,7 @@ def LP(x, y, args):
 			std_rel_error.append(np.std(predict_error_rel[array_pointer]))
 	#		print "Lag=%2i: %15.2f %15.2f %15.1f %15.1f" % (lag[i],mean_abs_error[i],std_abs_error[i],mean_rel_error[i],std_rel_error[i])
 			print "Signal_length %d, order %d: %15.2f %15.2f" % (signal_lengths[i], orders[j], mean_rel_error[array_pointer], std_rel_error[array_pointer])
-	print "\n"
+	print line_separator
 
 	# Save LP coefficients in file
 	if args.save != "":
@@ -315,6 +424,7 @@ def LP(x, y, args):
 					outfile.write(string + "\n")
 				outfile.close()
 		print "Results are saved in correponding files."
+
 
 def polynome_test(x,y,args):
 	'''Test of polynome prediction with different powers'''
@@ -375,7 +485,6 @@ def polynome_test(x,y,args):
 				predict[k,i]=approxpoint
 			else:
 				predict[k,i]=0
-
 
 # Prediction error estimation
 # //todo: 
@@ -498,6 +607,7 @@ def polynome_test(x,y,args):
 		plt.grid(True)
 		plt.show()
 
+
 def lag_test(x,y,args):
 	'''Test prediction with different lag-size (i.e. number of history points)'''
 	global colors
@@ -596,6 +706,7 @@ def lag_test(x,y,args):
 		plt.grid(True)
 		plt.show()
 
+
 def sp5point(points):
 	'''Returns next point of the trend, obtained from given 5 points list (Spencer 5-point)'''
 	p = [-28, 77, -28, -98, 112]; s = 0
@@ -606,6 +717,7 @@ def sp5point(points):
 		s += points[i] * p[i]
 	return s / 35
 
+
 def sp7point(points):
 	'''Returns next point of the trend, obtained from given 7 points list (Spencer 7-point)'''
 	p = [-12, 18, 12, -9, -24, -12, 48]; s = 0
@@ -615,6 +727,7 @@ def sp7point(points):
 	for i in xrange(len(points)):
 		s += points[i] * p[i]
 	return s / 21
+
 
 def spencer(x, y, args):
 	'''Prediction by obtaining trend with Spencer methods (5- and 7-point)'''
