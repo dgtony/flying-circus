@@ -426,157 +426,141 @@ def LP(x, y, args):
 		print "Results are saved in correponding files."
 
 
-def polynome_test(x,y,args):
+def polynome_test(x, y, args):
 	'''Test of polynome prediction with different powers'''
 	global colors
-	pinit=raw_input("Enter polynome powers separated by comma: ").split(',')
-	plist=[]
+	pinit = raw_input("Enter polynome powers separated by comma: ").split(',')
+	plist = []
 	for i in pinit:
 		try:
 			plist.append(int(i))
 		except ValueError:
 			print "That`s not a good value for polynome power..."
 			continue
-	n=len(plist)	
-	if n<1:
+	n = len(plist)	
+	if n < 1:
 		print "Power list is empty! Game over."
 		exit(1)
 
 	# Extrapolation
 	# Extrapolation. To use or not to use?
 	if args.extrapolate:
-		predict_extrapolate=np.zeros((3,len(y)))
-		extrapow=['linear','quadratic','cubic']
+		predict_extrapolate = np.zeros((3,len(y)))
+		extrapow = ['linear','quadratic','cubic']
 	# Initial history points for extrapolation	
 		for i in xrange(3):
-			predict_extrapolate[i,:4]=y[:4]
+			predict_extrapolate[i,:4] = y[:4]
 	# Extrapolation procedure
-		for i in xrange(4,len(y)):
+		for i in xrange(4, len(y)):
 			for p in xrange(3):
-				ext=InterpolatedUnivariateSpline(x[i-4:i],y[i-4:i],k=p+1)
-				expoint=ext(x[i])
-				if expoint>0:
-					predict_extrapolate[p,i]=expoint
+				ext = InterpolatedUnivariateSpline(x[i-4:i], y[i-4:i], k=p+1)
+				expoint = ext(x[i])
+				if expoint > 0:
+					predict_extrapolate[p, i] = expoint
 				else:
-					predict_extrapolate[p,i]=0
-
-
-	# Plot obtained results
-		for i in xrange(3):
-			plt.plot(x,predict_extrapolate[i,],colors[i+n],label="{}-extrapolation".format(extrapow[i]))
+					predict_extrapolate[p,i] = 0
 
 	# Approximation
 	# Prediction data initialization
-	predict=np.zeros((n,len(y)))
-	lag=int(raw_input("Enter lag (number of \"history\" points): "))
-	if (lag<(max(plist)+1)):
-		print "Wrong lag value. Lag is set to {}.".format(max(plist)+1)
-		lag=max(plist)+1
+	predict = np.zeros((n, len(y)))
+	lag = int(raw_input("Enter lag (number of \"history\" points): "))
+	if lag < (max(plist) + 1):
+		print "Wrong lag value. Lag is set to {}.".format(max(plist) + 1)
+		lag = max(plist) + 1
 	plist.sort()
 	# Initial history points for prediction
 	for i in xrange(n):
-		predict[i,:lag]=y[:lag]
+		predict[i, :lag] = y[:lag]
 
 	# Prediction procedure
-	for i in xrange(lag,len(y)):
+	for i in xrange(lag, len(y)):
 		for k in xrange(n):
-			approxpoint=np.polyval(np.polyfit(x[i-lag:i],y[i-lag:i],deg=plist[k]),x[i])
-			if approxpoint>0:
-				predict[k,i]=approxpoint
+			approxpoint = np.polyval(np.polyfit(x[i-lag:i], y[i-lag:i], deg=plist[k]), x[i])
+			if approxpoint > 0:
+				predict[k, i] = approxpoint
 			else:
-				predict[k,i]=0
+				predict[k, i] = 0
 
 # Prediction error estimation
-# //todo: 
-# //exclude initial points from estimation!
-#
-	if args.extrapolate:
-		predict_error_abs=np.zeros((n+3,len(y)))
-		predict_error_rel=np.zeros((n+3,len(y)))
-		for i in xrange(n+3):
-			for j in xrange(len(y)):
-				if i<n:
-					predict_error_abs[i,j]=abs(y[j]-predict[i,j])
-					if y[j]!=0:
-						predict_error_rel[i,j]=100.0*predict_error_abs[i,j]/y[j]
-					else:
-						if predict[i,j]==0:
-							predict_error_rel[i,j]=0
-						else:
-							predict_error_rel[i,j]=100
-
+	predict_error_abs = []; predict_error_rel = []
+	# Error estimation for approximation procedure
+	for i in xrange(n):
+		predict_error_abs.append(np.zeros(len(y) - lag))
+		predict_error_rel.append(np.zeros(len(y) - lag))
+		for j in xrange(len(y) - lag):
+			data_pointer = j + lag;
+			predict_error_abs[i][j] = abs(y[data_pointer] - predict[i, data_pointer])
+			if y[data_pointer] != 0:
+				predict_error_rel[i][j] = 100.0 * predict_error_abs[i][j] / y[data_pointer]
+			else:
+				if predict[i, data_pointer] == 0:
+					predict_error_rel[i][j] = 0
 				else:
-					predict_error_abs[i,j]=abs(y[j]-predict_extrapolate[i-n,j])
-					if y[j]!=0:
-						predict_error_rel[i,j]=100.0*predict_error_abs[i,j]/y[j]
-					else:
-						if predict_extrapolate[i-n,j]==0:
-							predict_error_rel[i,j]=0
-						else:
-							predict_error_rel[i,j]=100
-	else:
-		predict_error_abs=np.zeros((n,len(y)))
-		predict_error_rel=np.zeros((n,len(y)))
-		for i in xrange(n):
-			for j in xrange(len(y)):
-				predict_error_abs[i,j]=abs(y[j]-predict[i,j])
-				if y[j]!=0:
-					predict_error_rel[i,j]=100*predict_error_abs[i,j]/y[j]
-				else:		
-					if predict[i,j]==0:
-						predict_error_rel[i,j]=0
-					else:
-						predict_error_rel[i,j]=100		
+					predict_error_rel[i][j] = 100
 
-	mean_abs_error = []; mean_rel_error = []; std_abs_error = []; std_rel_error = []
-	num = predict_error_abs.shape[0]
+	if args.extrapolate:
+		# Error estimation for extrapolation procedure
+		for i in xrange(n, n+3):
+			predict_error_abs.append(np.zeros(len(y) - 4))
+			predict_error_rel.append(np.zeros(len(y) - 4))
+			for j in xrange(len(y) - 4):
+				data_pointer = j + 4;
+				predict_error_abs[i][j] = abs(y[data_pointer] - predict_extrapolate[i - n, data_pointer])
+				if y[data_pointer] != 0:
+					predict_error_rel[i][j] = 100.0 * predict_error_abs[i][j] / y[data_pointer]
+				else:
+					if predict[i, data_pointer] == 0:
+						predict_error_rel[i][j] = 0
+					else:
+						predict_error_rel[i][j] = 100
+
+	#mean_abs_error = []; std_abs_error = []
+	mean_rel_error = []; std_rel_error = []
 	line_separator = "---------------------------------------------------------"
 	print "{}\nApproximation type	 MAPE,%     Variation MAPE,%\n{}".format(line_separator, line_separator)
-
 	if args.extrapolate:
-		for i in xrange(num - 3):
+		for i in xrange(n):
 			mean_rel_error.append(np.mean(predict_error_rel[i]))
 			std_rel_error.append(np.std(predict_error_rel[i]))
 			print "%i-approximation: %14.2f %14.2f" % (plist[i], mean_rel_error[i], std_rel_error[i])
-		for i in xrange(num - 3, num):
+		for i in xrange(n, n+3):
 			mean_rel_error.append(np.mean(predict_error_rel[i]))
 			std_rel_error.append(np.std(predict_error_rel[i]))
-			print "%i-extrapolation: %14.2f %14.2f" % (i + 1 - n, mean_rel_error[i], std_rel_error[i])
+			print "%i-extrapolation: %14.2f %14.2f" % (i - n + 1, mean_rel_error[i], std_rel_error[i])
 	else:
-		for i in xrange(num):
+		for i in xrange(n):
 			mean_rel_error.append(np.mean(predict_error_rel[i]))
 			std_rel_error.append(np.std(predict_error_rel[i]))
 			print "%i-approximation: %14.2f %14.2f" % (plist[i], mean_rel_error[i], std_rel_error[i])
-
 	print line_separator
 
 	# Save results in file
-	if args.save!="":
+	if args.save != "":
 		# Choose splitter
 		if args.space:
-			splitter=" "
+			splitter = " "
 		else:
-			splitter=","
+			splitter = ","
 		# Open file
-		outfile=open(args.save,'wb')
-		title="Approximation by different polynomes with lag {}".format(lag)
-		outfile.write(title+"\n")
+		outfile = open(args.save, 'wb')
+		title = "Approximation by different polynomes with lag {}".format(lag)
+		outfile.write(title + "\n")
 		# Have we got any extrapolation data? Yes...
 		if args.extrapolate:
-			head="x"+splitter+"y"
+			head = "x" + splitter + "y"
 			for s in xrange(n):
-				head+=splitter+str(plist[s])+"-approx"
-			head+=splitter+"lin-ex"+splitter+"quad-ex"+splitter+"cubic-ex"
-			outfile.write(head+"\n")
+				head += splitter + str(plist[s]) + "-approx"
+			head += splitter + "lin-ex" + splitter + "quad-ex" + splitter + "cubic-ex"
+			outfile.write(head + "\n")
 			for r in xrange(len(x)):
-				string=str(x[r])+splitter+str(y[r])
+				string = str(x[r]) + splitter + str(y[r])
 				for c in xrange(n):
-					string+=splitter+str(predict[c,r])
-				string+=splitter+str(predict_extrapolate[0,r])+splitter+str(predict_extrapolate[1,r])+splitter+str(predict_extrapolate[2,r])
-				outfile.write(string+"\n")
+					string += splitter + str(predict[c, r])
+				string += splitter + str(predict_extrapolate[0, r]) + splitter + str(predict_extrapolate[1, r]) + splitter + str(predict_extrapolate[2, r])
+				outfile.write(string + "\n")
 		# No, we haven`t :)
 		else:
-			head="x"+splitter+"y"
+			head = "x" + splitter + "y"
 			for s in xrange(n):
 				head+=splitter+str(plist[s])+"-approx"
 			outfile.write(head+"\n")
@@ -590,8 +574,11 @@ def polynome_test(x,y,args):
 	# Plot obtained results
 	if args.plot:
 		for i in xrange(n):
-			plt.plot(x,predict[i,],colors[i],label=u"{}-аппроксимация".format(plist[i]))
-		plt.plot(x,y,colors[9],label=u"Исходный")
+			plt.plot(x, predict[i], colors[i], label=u"{}-аппроксимация".format(plist[i]))
+		if args.extrapolate:
+			for i in xrange(3):
+				plt.plot(x, predict_extrapolate[i], colors[i+n], label=u"{}-экстраполяция".format(extrapow[i]))
+		plt.plot(x, y, colors[9], label=u"Исходный")
 		plt.xlabel(u'Время')
 		plt.ylabel(u'Интенсивность трафика')
 		plt.title(u"Предсказание с помощью аппроксимации {}-го порядка".format(lag)) 
@@ -600,7 +587,7 @@ def polynome_test(x,y,args):
 		plt.show()
 
 
-def lag_test(x,y,args):
+def lag_test(x, y, args):
 	'''Test prediction with different lag-size (i.e. number of history points)'''
 	global colors
 	p = int(raw_input("Enter approximation polynome power (>=1): "))
@@ -612,7 +599,7 @@ def lag_test(x,y,args):
 		except ValueError:
 			print "Damn it! That`s not a good value for lag, man..."
 			continue
-	n = len(lag)	
+	n = len(lag)
 	if n < 1:
 		print "Lag list is empty! Game over."
 		exit(1)
@@ -633,7 +620,7 @@ def lag_test(x,y,args):
 			if approxpoint > 0:
 				predict[i, k] = approxpoint
 			else:
-				predict[i, k] = 0			
+				predict[i, k] = 0
 
 # Error estimation procedure. Only predicted values are taken into account, no initial points!
 	predict_error_abs = []; predict_error_rel = []
