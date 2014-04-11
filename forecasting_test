@@ -528,35 +528,27 @@ def polynome_test(x,y,args):
 					else:
 						predict_error_rel[i,j]=100		
 
-	mean_abs_error=[]
-	mean_rel_error=[]
-	std_abs_error=[]
-	std_rel_error=[]
-	print "\nApproximation      absolute error  absolute error  relative error  relative error"
-	print "   type      	       (mean)        (std.dev)	      (mean,%)	     (std.dev)"
-	num=predict_error_abs.shape[0]
-	if args.extrapolate:
-		for i in xrange(num-3):
-			mean_abs_error.append(np.mean(predict_error_abs[i]))
-			std_abs_error.append(np.std(predict_error_abs[i]))
-			mean_rel_error.append(np.mean(predict_error_rel[i]))
-			std_rel_error.append(np.std(predict_error_rel[i]))
-			print "%i-approximation: %12.2f %14.2f %14.1f %14.1f" % (plist[i],mean_abs_error[i],std_abs_error[i],mean_rel_error[i],std_rel_error[i])
-		for i in xrange(num-3,num):
-			mean_abs_error.append(np.mean(predict_error_abs[i]))
-			std_abs_error.append(np.std(predict_error_abs[i]))
-			mean_rel_error.append(np.mean(predict_error_rel[i]))
-			std_rel_error.append(np.std(predict_error_rel[i]))
-			print "%i-extrapolation: %12.2f %14.2f %14.1f %14.1f" % (i+1-n,mean_abs_error[i],std_abs_error[i],mean_rel_error[i],std_rel_error[i])
+	mean_abs_error = []; mean_rel_error = []; std_abs_error = []; std_rel_error = []
+	num = predict_error_abs.shape[0]
+	line_separator = "---------------------------------------------------------"
+	print "{}\nApproximation type	 MAPE,%     Variation MAPE,%\n{}".format(line_separator, line_separator)
 
+	if args.extrapolate:
+		for i in xrange(num - 3):
+			mean_rel_error.append(np.mean(predict_error_rel[i]))
+			std_rel_error.append(np.std(predict_error_rel[i]))
+			print "%i-approximation: %14.2f %14.2f" % (plist[i], mean_rel_error[i], std_rel_error[i])
+		for i in xrange(num - 3, num):
+			mean_rel_error.append(np.mean(predict_error_rel[i]))
+			std_rel_error.append(np.std(predict_error_rel[i]))
+			print "%i-extrapolation: %14.2f %14.2f" % (i + 1 - n, mean_rel_error[i], std_rel_error[i])
 	else:
 		for i in xrange(num):
-			mean_abs_error.append(np.mean(predict_error_abs[i]))
-			std_abs_error.append(np.std(predict_error_abs[i]))
 			mean_rel_error.append(np.mean(predict_error_rel[i]))
 			std_rel_error.append(np.std(predict_error_rel[i]))
-			print "%i-approximation: %12.2f %14.2f %14.1f %14.1f" % (plist[i],mean_abs_error[i],std_abs_error[i],mean_rel_error[i],std_rel_error[i])
-	print "\n"
+			print "%i-approximation: %14.2f %14.2f" % (plist[i], mean_rel_error[i], std_rel_error[i])
+
+	print line_separator
 
 	# Save results in file
 	if args.save!="":
@@ -611,94 +603,90 @@ def polynome_test(x,y,args):
 def lag_test(x,y,args):
 	'''Test prediction with different lag-size (i.e. number of history points)'''
 	global colors
-	p=int(raw_input("Enter approximation polynome power (>=1): "))
-	llist=raw_input("Enter lag values separated by comma (>=power+1): ").split(',')
-	lag=[]
+	p = int(raw_input("Enter approximation polynome power (>=1): "))
+	llist = raw_input("Enter lag values separated by comma (>=power+1): ").split(',')
+	lag = []
 	for i in llist:
 		try:
 			lag.append(int(i))
 		except ValueError:
 			print "Damn it! That`s not a good value for lag, man..."
 			continue
-	n=len(lag)	
-	if n<1:
+	n = len(lag)	
+	if n < 1:
 		print "Lag list is empty! Game over."
 		exit(1)
 
 # Approximation
 	# Prediction data initialization
-	predict=np.zeros((n,len(x)))
+	predict = np.zeros((n, len(x)))
 	lag.sort()
 
 	# Initial history points for prediction
 	for i in xrange(n):
-		predict[i,:lag[i]]=y[:lag[i]]
+		predict[i, :lag[i]] = y[:lag[i]]
 	
 	# Prediction procedure
 	for i in xrange(n):
-		for k in xrange(lag[i],len(x)):
-			approxpoint=np.polyval(np.polyfit(x[k-lag[i]:k],y[k-lag[i]:k],deg=p),x[k])
-			if approxpoint>0:
-				predict[i,k]=approxpoint
+		for k in xrange(lag[i], len(x)):
+			approxpoint = np.polyval(np.polyfit(x[k - lag[i]:k], y[k-lag[i]:k], deg=p), x[k])
+			if approxpoint > 0:
+				predict[i, k] = approxpoint
 			else:
-				predict[i,k]=0			
+				predict[i, k] = 0			
 
 # Error estimation procedure. Only predicted values are taken into account, no initial points!
-	predict_error_abs=[]; predict_error_rel=[]
+	predict_error_abs = []; predict_error_rel = []
 	for i in xrange(n):
-		predict_error_abs.append(np.zeros(len(y)-lag[i]))
-		predict_error_rel.append(np.zeros(len(y)-lag[i]))
-		for j in xrange(len(y)-lag[i]):
-			predict_error_abs[i][j]=abs(y[j+lag[i]]-predict[i,j+lag[i]])
-			if y[j+lag[i]]!=0:
-				predict_error_rel[i][j]=100*predict_error_abs[i][j]/y[j+lag[i]]
+		predict_error_abs.append(np.zeros(len(y) - lag[i]))
+		predict_error_rel.append(np.zeros(len(y) - lag[i]))
+		for j in xrange(len(y) - lag[i]):
+			predict_error_abs[i][j]=abs(y[j + lag[i]] - predict[i, j + lag[i]])
+			if y[j + lag[i]] != 0:
+				predict_error_rel[i][j] = 100 * predict_error_abs[i][j] / y[j + lag[i]]
 			else:		
-				if predict[i,j+lag[i]]==0:
-					predict_error_rel[i][j]=0
+				if predict[i, j + lag[i]] == 0:
+					predict_error_rel[i][j] = 0
 				else:
-					predict_error_rel[i][j]=100
+					predict_error_rel[i][j] = 100
 
-	mean_abs_error=[]
-	mean_rel_error=[]
-	std_abs_error=[]
-	std_rel_error=[]
-	print "\nLag_length   Absolute_error  Absolute_error  Relative_error  Relative_error"
-	print "                 (mean)        (std.dev)       (mean,%)        (std.dev)"
+	#mean_abs_error = []; std_abs_error = []
+	mean_rel_error = []; std_rel_error = []
+	line_separator = "-----------------------------------------------"
+	print "{}\nLag length	  MAPE,%     Variation MAPE,%\n{}".format(line_separator, line_separator)
 	for i in xrange(n):
-		mean_abs_error.append(np.mean(predict_error_abs[i]))
-		std_abs_error.append(np.std(predict_error_abs[i]))
 		mean_rel_error.append(np.mean(predict_error_rel[i]))
 		std_rel_error.append(np.std(predict_error_rel[i]))
-		print "Lag=%2i: %15.2f %15.2f %15.1f %15.1f" % (lag[i],mean_abs_error[i],std_abs_error[i],mean_rel_error[i],std_rel_error[i])
-	print "\n"
+		print "Lag %2i: %15.1f %15.1f" % (lag[i], mean_rel_error[i], std_rel_error[i])
+	print line_separator
 
 # Save results in file
-	if args.save!="":
+	if args.save != "":
 		# Choose splitter
 		if args.space:
-			splitter=" "
+			splitter = " "
 		else:
-			splitter=","
+			splitter = ","
 		# Open file
-		outfile=open(args.save,'wb')
-		title="Approximation by {}-power polynome with different lags".format(p)
-		outfile.write(title+"\n")
-		head="x"+splitter+"y"
+		outfile = open(args.save,'wb')
+		title = "Approximation by {}-power polynome with different lags".format(p)
+		outfile.write(title + "\n")
+		head = "x" + splitter + "y"
 		for s in xrange(n):
-			head+=splitter+str(lag[s])+"-lag"
-		outfile.write(head+"\n")
+			head += splitter + str(lag[s]) + "-lag"
+		outfile.write(head + "\n")
 		for r in xrange(len(x)):
-			string=str(x[r])+splitter+str(y[r])
+			string=str(x[r]) + splitter + str(y[r])
 			for c in xrange(n):
-				string+=splitter+str(predict[c,r])
-			outfile.write(string+"\n")	
+				string += splitter + str(predict[c, r])
+			outfile.write(string + "\n")	
 		outfile.close()
 
 # Plot obtained results
 	if args.plot:
 		for i in xrange(n):
-			plt.plot(x,predict[i,],colors[i],label=u"Интервал {}".format(lag[i]))
-		plt.plot(x,y,colors[9],label=u"Исходный")
+			plt.plot(x, predict[i,], colors[i], label=u"Интервал {}".format(lag[i]))
+		plt.plot(x, y, colors[9], label=u"Исходный")
 		plt.xlabel(u'Время')
 		plt.ylabel(u'Интенсивность трафика')
 		plt.title(u"Предсказание с помощью аппроксимации {}-го порядка".format(p)) 
@@ -746,7 +734,7 @@ def spencer(x, y, args):
 			predict[0, k] = 0
 	# Prediction, method: 7-point
 	for k in xrange(7, len(x)):
-		approxpoint = sp7p3oint(y[k - 7 : k])
+		approxpoint = sp7point(y[k - 7 : k])
 		if approxpoint > 0:
 			predict[1, k] = approxpoint
 		else:
@@ -791,10 +779,11 @@ def spencer(x, y, args):
 	std_rel_error_7p = np.std(predict_error_rel_7p)
 	
 	# Print results
-	print "\nLag_length   Absolute_error  Absolute_error  Relative_error  Relative_error"
-	print "                 (mean)        (std.dev)       (mean,%)        (std.dev)"
-	print "5-point: %15.2f %15.2f %15.1f %15.1f" % (mean_abs_error_5p,std_abs_error_5p,mean_rel_error_5p,std_rel_error_5p)
-	print "7-point: %15.2f %15.2f %15.1f %15.1f" % (mean_abs_error_7p,std_abs_error_7p,mean_rel_error_7p,std_rel_error_7p)
+	line_separator = "-----------------------------------------------"
+	print "{}\nMethod		   MAPE,%     Variation MAPE,%\n{}".format(line_separator, line_separator)
+	print "5-point: %15.2f %15.2f" % (mean_rel_error_5p,std_rel_error_5p)
+	print "7-point: %15.2f %15.2f" % (mean_rel_error_7p,std_rel_error_7p)
+	print line_separator
 
 # Plot results
 	if args.plot:
