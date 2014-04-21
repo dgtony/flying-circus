@@ -489,9 +489,9 @@ def polynome_test(x, y, args):
 		predict_error_rel.append(np.zeros(len(y) - lag))
 		for j in xrange(len(y) - lag):
 			data_pointer = j + lag;
-			predict_error_abs[i][j] = abs(y[data_pointer] - predict[i, data_pointer])
+			predict_error_abs[i][j] = y[data_pointer] - predict[i, data_pointer]
 			if y[data_pointer] != 0:
-				predict_error_rel[i][j] = 100.0 * predict_error_abs[i][j] / y[data_pointer]
+				predict_error_rel[i][j] = 100.0 * abs(predict_error_abs[i][j]) / y[data_pointer]
 			else:
 				if predict[i, data_pointer] == 0:
 					predict_error_rel[i][j] = 0
@@ -505,9 +505,9 @@ def polynome_test(x, y, args):
 			predict_error_rel.append(np.zeros(len(y) - 4))
 			for j in xrange(len(y) - 4):
 				data_pointer = j + 4;
-				predict_error_abs[i][j] = abs(y[data_pointer] - predict_extrapolate[i - n, data_pointer])
+				predict_error_abs[i][j] = y[data_pointer] - predict_extrapolate[i - n, data_pointer]
 				if y[data_pointer] != 0:
-					predict_error_rel[i][j] = 100.0 * predict_error_abs[i][j] / y[data_pointer]
+					predict_error_rel[i][j] = 100.0 * abs(predict_error_abs[i][j]) / y[data_pointer]
 				else:
 					if predict[i, data_pointer] == 0:
 						predict_error_rel[i][j] = 0
