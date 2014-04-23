@@ -116,7 +116,7 @@ def Bartels_test(x):
 	b_norm = (b - 2) / (2 * np.sqrt(5 / (5 * x.size + 7)))
 	return b_norm
 
-def distribution_estimate(data, distributions, verb_level=3, plot_pdf=True):
+def distribution_estimate(data, distributions, verb_level=3, f_plot_pdf=True):
 	''' Estimates best fit parameters and likelihood of given data
 	for each distribution from list. 
 	'''
@@ -142,7 +142,7 @@ def distribution_estimate(data, distributions, verb_level=3, plot_pdf=True):
 	print sep
 
 	# Plot results
-	if plot_pdf:
+	if f_plot_pdf:
 		fig1 = plt.figure()
 		x = np.linspace(min(data), max(data), data.size)
 		h = plt.hist(data, bins=np.linspace(min(data), max(data), 20), normed=True)
@@ -156,18 +156,159 @@ def distribution_estimate(data, distributions, verb_level=3, plot_pdf=True):
 		plt.legend(loc='best')
 		plt.grid(True)
 
-def hurst(ts, maxlag=None):
-	"""Returns the Hurst Exponent of the time series vector ts"""
-	# Create the range of lag values
-	if maxlag == None:
-		maxlag = len(ts)
-	lags = range(2, maxlag - 1)
-	# Calculate the array of the variances of the lagged differences
-	tau = [np.sqrt(np.std(np.subtract(ts[lag:], ts[:-lag]))) for lag in lags]
-	# Use a linear fit to estimate the Hurst Exponent
-	poly = np.polyfit(np.log(lags), np.log(tau), 1)
-	# Return the Hurst exponent from the polyfit output
-	return poly[0]*2.0, maxlag
+def exclude_trend(ts, trend_order=2, excl_trend_plot=False):
+	'''Remove trends of defined order from time series.
+	'''
+	ts_length = len(ts)
+	ts_excl_trend = np.zeros(ts_length)
+	# Remove trend	
+	trend = np.polyfit(np.arange(ts_length), ts, 2)
+	ts_excl_trend = ts - pow(np.arange(ts_length),2)*trend[0] - np.arange(ts_length)*trend[1] - trend[2]
+	if excl_trend_plot:
+		fig4 = plt.figure()
+		plt.plot(np.arange(ts_length), ts, label=u'Исходный ряд')
+		plt.plot(np.arange(ts_length), ts_excl_trend, label=u'Удален тренд порядка {}'.format(trend_order))
+		plt.legend(loc='best')
+	return ts_excl_trend
+
+def hurst_RS(ts, maxlag='auto', f_plot=True):
+	'''Returns the Hurst exponent of the time series by calculating R/S-statistic.
+	'''
+	# Exclude trend from time series
+	ts = exclude_trend(ts)
+	ts_length = len(ts)
+	# Number of lags to investigate
+	if maxlag == 'auto':
+		# Use only 30% lowest lags
+		maxlag = int(round(0.3*ts_length/2))
+		if maxlag < 5:
+			maxlag = 5
+	elif maxlag == 'all':
+		maxlag = int(ts_length / 2)
+	lags = xrange(2, maxlag+1)
+
+	# Calculate R/S-statistics on different lags
+	RS = []
+	for lag in lags:
+		R = []; S = []
+		for i in xrange(int(ts_length / lag)):
+			# Calculate centred timeseries in block
+			ts_centred = ts[i*lag:(i+1)*lag] - np.repeat(np.mean(ts[i*lag:(i+1)*lag]),lag)
+			# Maximum range in block with centred values
+			R.append(max(np.cumsum(ts_centred)) - min(np.cumsum(ts_centred)))
+			# Standart deviation in block
+			S.append(np.std(ts[i*lag:(i+1)*lag]))
+		# Residuals of time series divided on blocks (block_size = current lag)
+		if ts_length % lag != 0:
+			ts_centred = ts[-(ts_length%lag)-1:-1] - np.repeat(np.mean(ts[-(ts_length%lag)-1:-1]),ts_length%lag)
+			R.append(max(np.cumsum(ts_centred)) - min(np.cumsum(ts_centred)))
+			S.append(np.std(ts[i*lag:(i+1)*lag]))
+		# Mean normed range for current lag size
+		RS.append(np.mean(np.asarray(R)/np.asarray(S)))
+
+	# Obtain approximation line slope and get Hurst exponent
+	poly = np.polyfit(np.log(lags), np.log(RS), 1)
+	hurst = poly[0]
+
+	# Plot results
+	if f_plot:
+		# R/S-statistics on full range of possible lags
+		RS_full = []
+		for lag in xrange(2, int(ts_length / 2)):
+			R_full = []; S_full = []
+			for i in xrange(int(ts_length / lag)):
+				ts_centred = ts[i*lag:(i+1)*lag] - np.repeat(np.mean(ts[i*lag:(i+1)*lag]),lag)
+				R_full.append(max(np.cumsum(ts_centred)) - min(np.cumsum(ts_centred)))
+				S_full.append(np.std(ts[i*lag:(i+1)*lag]))
+			if ts_length % lag != 0:
+				ts_centred = ts[-(ts_length%lag)-1:-1] - np.repeat(np.mean(ts[-(ts_length%lag)-1:-1]),ts_length%lag)
+				R_full.append(max(np.cumsum(ts_centred)) - min(np.cumsum(ts_centred)))
+				S_full.append(np.std(ts[i*lag:(i+1)*lag]))
+			# Mean normed range for current lag size
+			RS_full.append(np.mean(np.asarray(R_full)/np.asarray(S_full)))
+		# New figure
+		#fig3 = plt.figure()
+		plt.subplot(122)
+		x = np.log(xrange(2, int(ts_length / 2)))
+		# Plot values
+		plt.plot(x, np.log(RS_full), color='r', marker='o', label=u'Реальные значения')
+		plt.plot(np.log(lags), poly[0]*np.log(lags)+poly[1], color='g', linewidth=3, label=u'Аппроксимация')
+		# Plot borders
+		plt.plot(x, np.repeat(poly[1], x.size), linestyle='--', color='b')
+		plt.plot(x, 0.5*x+poly[1], linestyle='--', color='b')
+		plt.plot(x, x+poly[1], linestyle='--', color='b')
+		plt.axvline(np.log(lags[0]), linestyle='--', color='b')
+		plt.axvline(np.log(lags[-1]), linestyle='--', color='b')
+		plt.xlabel(u'Log(lag)')
+		plt.ylabel('Log(R/S)')
+		plt.title(u'R/S-статистика')
+		plt.legend(loc='best')
+	return hurst, maxlag
+
+def hurst_var(ts, maxlag='auto', f_plot=True):
+	'''Returns the Hurst exponent of the time series by variance-plot method.
+	'''
+	# Exclude trend from time series
+	ts = exclude_trend(ts)
+	ts_length = len(ts)
+	# Number of lags to investigate
+	if maxlag == 'auto':
+		# Use only 30% lowest lags
+		maxlag = int(round(0.3*ts_length/2))
+		if maxlag < 5:
+			maxlag = 5
+	elif maxlag == 'all':
+		maxlag = int(ts_length / 2)
+	lags = xrange(2, maxlag+1)
+	# Calculate variances on different lags
+	var_array = []
+	for lag in lags:
+		av_series = []
+		for i in xrange(int(ts_length / lag)):
+			av_series.append(np.mean(ts[i*lag:(i+1)*lag]))
+		if ts_length % lag != 0:
+			av_series.append(np.mean(ts[-(ts_length%lag)-1:-1]))
+		var_array.append(np.var(av_series))
+	# Obtain approximation line slope and get Hurst exponent
+	poly = np.polyfit(np.log(lags), np.log(var_array), 1)
+	hurst = 1 + poly[0]/2
+	# Plot results
+	if f_plot:
+		# Variances on full range of possible lags
+		var_full = []
+		for lag in xrange(2, int(ts_length / 2)):
+			av_series = []
+			for i in xrange(int(ts_length / lag)):
+				av_series.append(np.mean(ts[i*lag:(i+1)*lag]))
+			if ts_length % lag != 0:
+				av_series.append(np.mean(ts[-(ts_length%lag)-1:-1]))
+			var_full.append(np.var(av_series))
+		# New figure
+		fig3 = plt.figure()
+		plt.subplot(121)
+		x = np.log(xrange(2, int(ts_length / 2)))
+		# Plot values
+		plt.plot(x, np.log(var_full), color='r', marker='o', label=u'Реальные значения')
+		plt.plot(np.log(lags), poly[0]*np.log(lags)+poly[1], color='g', linewidth=3, label=u'Аппроксимация')
+		# Plot borders
+		plt.plot(x, np.repeat(poly[1], x.size), linestyle='--', color='b')
+		plt.plot(x, -1*x+poly[1], linestyle='--', color='b')
+		plt.plot(x, -2*x+poly[1], linestyle='--', color='b')
+		plt.axvline(np.log(lags[0]), linestyle='--', color='b')
+		plt.axvline(np.log(lags[-1]), linestyle='--', color='b')
+		plt.xlabel(u'Log(lag)')
+		plt.ylabel('Log(Variance)')
+		plt.title(u'График изменения дисперсии')
+		plt.legend(loc='best')
+	return hurst, maxlag
+
+def hypoteze_check(statistics, quantile='95%'):
+	norm_quantiles = {'99.99%': 3.715, '99.9%': 3.090, '99%':	2.326, '97.72%': 2.000, '97.5%': 1.960, '95%': 1.645, '90%': 1.282, '84.13%': 1.000, '50%': 0.000}
+	if abs(statistics) < norm_quantiles[quantile]:
+		H0 = True
+	else:
+		H0 = False
+	return H0
 
 def LL_estimate(data, distribution, *params):
 	''' Estimates log-likelihood value of defined probability law.
@@ -193,14 +334,6 @@ def loadData(filename):
 	fd.close()
 	return np.asarray(x), np.asarray(y)
 
-def hypoteze_check(statistics, quantile='95%'):
-	norm_quantiles = {'99.99%': 3.715, '99.9%': 3.090, '99%':	2.326, '97.72%': 2.000, '97.5%': 1.960, '95%': 1.645, '90%': 1.282, '84.13%': 1.000, '50%': 0.000}
-	if abs(statistics) < norm_quantiles[quantile]:
-		H0 = True
-	else:
-		H0 = False
-	return H0
-
 def trend_test(data):
 	ac = hypoteze_check(AC_test(data))
 	bart = hypoteze_check(Bartels_test(data))
@@ -211,19 +344,27 @@ def trend_test(data):
 	print "Bartels \t\t{}".format("No trend" if bart else "Trend detected")
 	print "{}\n".format(sep)
 
+
 if __name__ == "__main__":
 
 	# Control flags
-	# Maximum lag step for Hurst log-log estimation
-	maxstep = 30
-	# if flag is set in true, PACF will be shown, otherwise - power spectrum
-	show_PACF = True
+######################################################
+	# Maximum lag step for Hurst log-log estimation 
+	# (number of steps or 'auto' for 30% lowest or 'all' for whole timeseries)
+	maxstep = 'auto'
+	# Plot Hurst exponent?
+	f_plot_Hurst = False
+	# If flag is set in true, PACF will be shown, otherwise - power spectrum
+	f_show_PACF = True
 	# Number of lags shown on PACF plot (if None, than all timeseries used)
 	pacf_lags = 40
 	# ACF type flag
-	use_symmetric_ACF = False
-	# Plot pdf-functions in distribution test
-	plot_pdf = True
+	f_use_symmetric_ACF = False
+	# Plot pdf-functions in distribution estimation test
+	f_plot_pdf = False
+	# Exclude trend before spectral, ACF and PACF analysis?
+	f_exclude_trend = False
+#######################################################
 
 	# Check input arguments
 	if len(sys.argv) < 2 or len(sys.argv) > 3:
@@ -237,10 +378,10 @@ if __name__ == "__main__":
 	print "Timestep: {} sec".format(timestep)
 
 	# List of used distributions to verify
-	dist_names = ['alpha', 'beta', 'expon', 'gamma', 'lognorm', 'norm', 'pareto', 'powerlaw', 'rayleigh']
+	dist_names = ['alpha', 'beta', 'cauchy', 'expon', 'gamma', 'lognorm', 'norm', 'pareto', 'powerlaw', 'rayleigh', 'uniform', 'weibull_min', 'weibull_max']
 	# Obtain data probability distribution law by MLE
 	print "\n\t\tData distribution test\n"
-	distribution_estimate(y, dist_names, plot_pdf)
+	distribution_estimate(y, dist_names, f_plot_pdf=f_plot_pdf)
 
 	# Trend presence test
 	trend_test(y)
@@ -251,8 +392,14 @@ if __name__ == "__main__":
 	adftest(y, is_adf_short)
 
 	# Estimate Hurst coefficient for timeseries
-	h, ml = hurst(y, maxstep)
-	print "\nHurst parameter for timeseries with maximum step {}:\n{}\n".format(ml, h)
+	h1, ml1 = hurst_var(y, maxstep, f_plot_Hurst)
+	h2, ml2 = hurst_RS(y, maxstep, f_plot_Hurst)
+	print "\nHurst parameter estimation, maximum_lag: {}".format(ml1)
+	print "Variance plot: {}\nR/S-statistic: {}\n".format(round(h1,3), round(h2,3))
+
+	# Exclude trend for spectral analysis?
+	if f_exclude_trend:
+		y = exclude_trend(y, trend_order=2)
 
 	# Caclulate timeseries spectrums
 	spectrum = abs(np.fft.fft(y))
@@ -270,7 +417,7 @@ if __name__ == "__main__":
 	plt.grid(True)
 
 	# ACF plot
-	if use_symmetric_ACF == True:
+	if f_use_symmetric_ACF == True:
 	# Symmetric ACF
 		plt.subplot(222)
 		plt.acorr(y, maxlags=None, color='b')
@@ -293,7 +440,7 @@ if __name__ == "__main__":
 	#plt.title("Timeseries spectrum")
 	plt.grid(True)
 
-	if show_PACF == True:
+	if f_show_PACF == True:
 		from statsmodels.graphics.tsaplots import plot_pacf
 		plot_pacf(y, ax=plt.subplot(224), lags=pacf_lags)
 		plt.xlabel(u'Шаг')
