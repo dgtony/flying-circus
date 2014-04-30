@@ -204,7 +204,7 @@ def exp_smoothing(x, y, args):
 	#mean_abs_error = []; std_abs_error = []
 	mean_rel_error = []; std_rel_error = []
 	line_separator = "------------------------------------------------------------------------"
-	print "{}\nPrediction model			    MAPE,%     Variation MAPE,%\n{}".format(line_separator, line_separator)
+	print "{}\nPrediction model			    MAPE,%     Std.dev. MAPE,%\n{}".format(line_separator, line_separator)
 	for i in xrange(6):
 		mean_rel_error.append(np.mean(predict_error_rel[i]))
 		std_rel_error.append(np.std(predict_error_rel[i]))
@@ -216,8 +216,8 @@ def exp_smoothing(x, y, args):
 		# Plot prediction results
 		fig1 = plt.figure()
 		for i in xrange(6):
-			plt.plot(x, predict[i], label=pr_models[i])
-		plt.plot(x, y, colors[-1], label=u"Исходный")
+			plt.plot(x, predict[i], marker=markers[i], label=pr_models[i])
+		plt.plot(x, y, '--', label=u"Исходный")
 		plt.xlabel(u'Время')
 		plt.ylabel(u'Интенсивность трафика')
 		plt.title(u"Экспоненциальное сглаживание") 
@@ -239,8 +239,8 @@ def exp_smoothing(x, y, args):
 
 		# Plot ES_A-model parameter evolution
 		fig3 = plt.figure()
-		plt.plot(x[:-1], alpha_ES_A[:-1], label=u"Коэффициент сглаживания")
-		plt.plot(x[:-1], gamma_ES_A[:-1], label=u"Сглаживание тренда")
+		plt.plot(x[:-1], alpha_ES_A[:-1], marker=markers[0], label=u"Коэффициент сглаживания")
+		plt.plot(x[:-1], gamma_ES_A[:-1], marker=markers[2], label=u"Сглаживание тренда")
 		plt.xlabel(u'Время')
 		plt.ylabel(u'Значение параметра')
 		plt.title(u"Модель ES-A. Эволюция параметров") 
@@ -251,9 +251,9 @@ def exp_smoothing(x, y, args):
 
 		# Plot ES_DA-model parameter evolution
 		fig4 = plt.figure()
-		plt.plot(x[:-1], alpha_ES_DA[:-1], label=u"Коэффициент сглаживания")
-		plt.plot(x[:-1], gamma_ES_DA[:-1], label=u"Сглаживание тренда")
-		plt.plot(x[:-1], phi_ES_DA[:-1], label=u"Параметр демпфирования")
+		plt.plot(x[:-1], alpha_ES_DA[:-1], marker=markers[0], label=u"Коэффициент сглаживания")
+		plt.plot(x[:-1], gamma_ES_DA[:-1], marker=markers[1], label=u"Сглаживание тренда")
+		plt.plot(x[:-1], phi_ES_DA[:-1], marker=markers[2], label=u"Параметр демпфирования")
 		plt.xlabel(u'Время')
 		plt.ylabel(u'Значение параметра')
 		plt.title(u"Модель ES-DA. Эволюция параметров") 
@@ -276,8 +276,8 @@ def exp_smoothing(x, y, args):
 
 		# Plot ES_A-PE-model parameter evolution
 		fig6 = plt.figure()
-		plt.plot(x[:-1], alpha_ES_A_pe[:-1], label=u"Коэффициент сглаживания")
-		plt.plot(x[:-1], gamma_ES_A_pe[:-1], label=u"Сглаживание тренда")
+		plt.plot(x[:-1], alpha_ES_A_pe[:-1], marker=markers[0], label=u"Коэффициент сглаживания")
+		plt.plot(x[:-1], gamma_ES_A_pe[:-1], marker=markers[1], label=u"Сглаживание тренда")
 		plt.xlabel(u'Время')
 		plt.ylabel(u'Значение параметра')
 		plt.title(u"Модель ES-A-PE. Эволюция параметров") 
@@ -288,9 +288,9 @@ def exp_smoothing(x, y, args):
 
 		# Plot ES_DA-PE-model parameter evolution
 		fig7 = plt.figure()
-		plt.plot(x[:-1], alpha_ES_DA_pe[:-1], label=u"Коэффициент сглаживания")
-		plt.plot(x[:-1], gamma_ES_DA_pe[:-1], label=u"Сглаживание тренда")
-		plt.plot(x[:-1], phi_ES_DA_pe[:-1], label=u"Параметр демпфирования")
+		plt.plot(x[:-1], alpha_ES_DA_pe[:-1], marker=markers[0], label=u"Коэффициент сглаживания")
+		plt.plot(x[:-1], gamma_ES_DA_pe[:-1], marker=markers[1], label=u"Сглаживание тренда")
+		plt.plot(x[:-1], phi_ES_DA_pe[:-1], marker=markers[2], label=u"Параметр демпфирования")
 		plt.xlabel(u'Время')
 		plt.ylabel(u'Значение параметра')
 		plt.title(u"Модель ES-DA-PE. Эволюция параметров") 
@@ -307,7 +307,7 @@ def LP(x, y, args):
 	import lpc
 	'''Test of linear prediction with different prediction orders and different correlation matrix size.
 	Linear prediction procedure used here is similar to the one implemented in LP vocoders.'''
-	global colors
+	#global markers
 
 	def input_list_int(text, splitter=','):
 		lst_string = raw_input(text).split(splitter)
@@ -363,8 +363,8 @@ def LP(x, y, args):
 	if args.plot:
 		for i in xrange(num_signal_lengths):
 			for j in xrange(num_orders):
-				plt.plot(x, predict[i,j], colors[i*num_orders+j], label=u"Порядок предсказания={}, длина сигнала ={}".format(orders[j],signal_lengths[i]))
-		plt.plot(x,y,colors[-1],label=u"Исходный")
+				plt.plot(x, predict[i,j], marker=markers[i*num_orders+j], label=u"Порядок предсказания={}, длина сигнала ={}".format(orders[j],signal_lengths[i]))
+		plt.plot(x, y, '--', label=u"Исходный")
 		plt.xlabel(u'Время')
 		plt.ylabel(u'Интенсивность трафика')
 		plt.title(u"Метод линейного предсказания") 
@@ -396,7 +396,7 @@ def LP(x, y, args):
 	#print "                 (mean)        (std.dev)       (mean,%)        (std.dev)"
 	# Short output
 	line_separator = "------------------------------------------------------------------------"
-	print "{}\nParameters   		             MAPE,%     Variation MAPE,%\n{}".format(line_separator, line_separator)
+	print "{}\nParameters   		             MAPE,%     Std.dev. MAPE,%\n{}".format(line_separator, line_separator)
 	for i in xrange(num_signal_lengths):
 		for j in xrange(num_orders):
 			array_pointer = i * num_orders + j
@@ -428,7 +428,7 @@ def LP(x, y, args):
 
 def polynome_test(x, y, args):
 	'''Test of polynome prediction with different powers'''
-	global colors
+	#global markers
 	pinit = raw_input("Enter polynome powers separated by comma: ").split(',')
 	plist = []
 	for i in pinit:
@@ -505,11 +505,11 @@ def polynome_test(x, y, args):
 			predict_error_rel.append(np.zeros(len(y) - 4))
 			for j in xrange(len(y) - 4):
 				data_pointer = j + 4;
-				predict_error_abs[i][j] = y[data_pointer] - predict_extrapolate[i - n, data_pointer]
+				predict_error_abs[i][j] = y[data_pointer] - predict_extrapolate[i-n, data_pointer]
 				if y[data_pointer] != 0:
 					predict_error_rel[i][j] = 100.0 * abs(predict_error_abs[i][j]) / y[data_pointer]
 				else:
-					if predict[i, data_pointer] == 0:
+					if predict_extrapolate[i-n, data_pointer] == 0:
 						predict_error_rel[i][j] = 0
 					else:
 						predict_error_rel[i][j] = 100
@@ -517,7 +517,7 @@ def polynome_test(x, y, args):
 	#mean_abs_error = []; std_abs_error = []
 	mean_rel_error = []; std_rel_error = []
 	line_separator = "---------------------------------------------------------"
-	print "{}\nApproximation type	 MAPE,%     Variation MAPE,%\n{}".format(line_separator, line_separator)
+	print "{}\nApproximation type	 MAPE,%     Std.dev. MAPE,%\n{}".format(line_separator, line_separator)
 	if args.extrapolate:
 		for i in xrange(n):
 			mean_rel_error.append(np.mean(predict_error_rel[i]))
@@ -574,14 +574,14 @@ def polynome_test(x, y, args):
 	# Plot obtained results
 	if args.plot:
 		for i in xrange(n):
-			plt.plot(x, predict[i], colors[i], label=u"{}-аппроксимация".format(plist[i]))
+			plt.plot(x, predict[i], marker=markers[i], label=u"{}-аппроксимация".format(plist[i]))
 		if args.extrapolate:
 			for i in xrange(3):
-				plt.plot(x, predict_extrapolate[i], colors[i+n], label=u"{}-экстраполяция".format(extrapow[i]))
-		plt.plot(x, y, colors[9], label=u"Исходный")
+				plt.plot(x, predict_extrapolate[i], marker=markers[i+n], label=u"{}-экстраполяция".format(extrapow[i]))
+		plt.plot(x, y, '--', label=u"Исходный")
 		plt.xlabel(u'Время')
 		plt.ylabel(u'Интенсивность трафика')
-		plt.title(u"Предсказание с помощью аппроксимации {}-го порядка".format(lag)) 
+		plt.title(u"Предсказание с помощью полиномиальной аппроксимации") 
 		plt.legend(loc='best')
 		plt.grid(True)
 		plt.show()
@@ -589,7 +589,7 @@ def polynome_test(x, y, args):
 
 def lag_test(x, y, args):
 	'''Test prediction with different lag-size (i.e. number of history points)'''
-	global colors
+	#global markers
 	p = int(raw_input("Enter approximation polynome power (>=1): "))
 	llist = raw_input("Enter lag values separated by comma (>=power+1): ").split(',')
 	lag = []
@@ -640,7 +640,7 @@ def lag_test(x, y, args):
 	#mean_abs_error = []; std_abs_error = []
 	mean_rel_error = []; std_rel_error = []
 	line_separator = "-----------------------------------------------"
-	print "{}\nLag length	  MAPE,%     Variation MAPE,%\n{}".format(line_separator, line_separator)
+	print "{}\nLag length	  MAPE,%     Std.dev. MAPE,%\n{}".format(line_separator, line_separator)
 	for i in xrange(n):
 		mean_rel_error.append(np.mean(predict_error_rel[i]))
 		std_rel_error.append(np.std(predict_error_rel[i]))
@@ -672,8 +672,8 @@ def lag_test(x, y, args):
 # Plot obtained results
 	if args.plot:
 		for i in xrange(n):
-			plt.plot(x, predict[i,], colors[i], label=u"Интервал {}".format(lag[i]))
-		plt.plot(x, y, colors[9], label=u"Исходный")
+			plt.plot(x, predict[i,], marker=markers[i], label=u"Интервал {}".format(lag[i]))
+		plt.plot(x, y, '--', label=u"Исходный")
 		plt.xlabel(u'Время')
 		plt.ylabel(u'Интенсивность трафика')
 		plt.title(u"Предсказание с помощью аппроксимации {}-го порядка".format(p)) 
@@ -706,7 +706,7 @@ def sp7point(points):
 
 def spencer(x, y, args):
 	'''Prediction by obtaining trend with Spencer methods (5- and 7-point)'''
-	global colors
+	#global markers
 	# Prediction array initialization
 	predict = np.zeros((2, len(x)))
 	# Initial history points for prediction
@@ -767,16 +767,16 @@ def spencer(x, y, args):
 	
 	# Print results
 	line_separator = "-----------------------------------------------"
-	print "{}\nMethod		   MAPE,%     Variation MAPE,%\n{}".format(line_separator, line_separator)
+	print "{}\nMethod		   MAPE,%     Std.dev. MAPE,%\n{}".format(line_separator, line_separator)
 	print "5-point: %15.2f %15.2f" % (mean_rel_error_5p,std_rel_error_5p)
 	print "7-point: %15.2f %15.2f" % (mean_rel_error_7p,std_rel_error_7p)
 	print line_separator
 
 # Plot results
 	if args.plot:
-		plt.plot(x, predict[0,], colors[1], label=u"5 точек")
-		plt.plot(x, predict[1,], colors[2], label=u"7 точек")
-		plt.plot(x, y, colors[9], label=u"Исходный")
+		plt.plot(x, predict[0,], marker=markers[1], label=u"5 точек")
+		plt.plot(x, predict[1,], marker=markers[2], label=u"7 точек")
+		plt.plot(x, y, '--', label=u"Исходный")
 		plt.xlabel(u'Время')
 		plt.ylabel(u'Интенсивность трафика')
 		plt.title(u"Предсказание с помощью процедуры Спенсера") 
@@ -802,7 +802,9 @@ parser.add_argument("-t","--type",default="polynome",help="type of experiment (d
 args = parser.parse_args()
 
 # Color list
-colors = ('b','g','r','c','m','y','k','*','o','--')
+#colors = ('b','g','r','c','m','y','k','*','o','--')
+# Markers for plots
+markers = ('x', 'o', '*', 'v', '^', '.', '+', 's', 'p')
 
 # Load data from file
 xl = []; yl = []; i = 0

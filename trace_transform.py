@@ -6,8 +6,9 @@ import matplotlib.pyplot as plt
 font = {'family': 'Times New Roman', 'weight': 'normal', 'size': '14.0'}
 plt.rc('font', **font)
 
-# Color to plot
-color = ('g','b','r','#6F4E37','m','c','y','k','*','o','--')
+# Plot options
+#color = ('g','b','r','#6F4E37','m','c','y','k','*','o','--')
+markers = ('x', 'o', '*', 'v', '^', '.', '+', 's', 'p')
 # Figure resolution (for saving)
 res = 300
 
@@ -88,9 +89,9 @@ for i in xrange(len(step)):
 	x[i] = [(val + step[i] / 2) for val in x[i]]
 
 # Plot results
-plt.plot(xl, yl, color[0], label=u"Исходный")
+plt.plot(xl, yl, label=u"Исходный")
 for i in xrange(len(step)):
-	plt.plot(x[i], y[i], color[i + 1], linewidth=2.0, label=u"Шаг {}".format(step[i]))
+	plt.plot(x[i], y[i], marker=markers[i], label=u"Шаг {}".format(step[i]))
 plt.xlabel(u'Время, сек')
 plt.ylabel(u'Интенсивность трафика, байт/сек')
 plt.title(u"Сглаживание временного ряда") 
