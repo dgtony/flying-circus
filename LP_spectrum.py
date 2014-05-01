@@ -1,8 +1,11 @@
+# -*- coding: utf-8 -*-
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib import animation
 from scipy.interpolate import spline
 import sys
+font = {'family': 'Times New Roman', 'weight': 'normal', 'size': '14.0'}
+plt.rc('font', **font)
 
 '''Utility used to plot and animate predictor-filter spectrums, obtained during prediction procedure. 
 Use only input files saved from LP-test performed by "predict"-utility!
@@ -38,12 +41,12 @@ if __name__ == "__main__":
 	coeff = loadData(sys.argv[1])
 
 	# Get signal length from filename
-	sig_length = int((sys.argv[1].partition("sig")[2])[:-4])
+	sig_length = int((sys.argv[1].partition("sig")[2]).split(".")[0])
 
 	# Compute filter spectrums
 	trans_fun = []
 	for filt in coeff:
-		filter_realisation = np.concatenate((filt, np.zeros(sig_length - len(filt))))
+		filter_realisation = np.concatenate((filt, np.zeros(sig_length - len(filt) + 1)))
 		trans_fun.append(1./abs(np.fft.rfft(filter_realisation)))
 	freq = np.fft.rfftfreq(sig_length, 1)
 
@@ -65,10 +68,11 @@ if __name__ == "__main__":
 	for i in xrange(len(trans_fun)):
 		ynew = spline(freq, trans_fun[i], xnew, order=3)
 		plt.plot(xnew, ynew)
-	plt.xlabel("Frequency")
-	plt.ylabel("Amplitude")
-	plt.title("Prediction filter spectrums")
+	plt.xlabel(u"Частота")
+	plt.ylabel(u"Амплитуда")
+	plt.title(u"АЧХ фильтра-предсказателя")
 	plt.grid(True)
+	#plt.savefig(sys.argv[1]+".png", dpi=300)
 	plt.show()
 
 
