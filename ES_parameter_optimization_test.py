@@ -4,7 +4,7 @@ from __future__ import division
 import sys, csv
 import numpy as np
 import matplotlib.pyplot as plt
-from scipy.optimize import minimize
+from scipy.optimize import fmin_tnc
 font = {'family': 'Times New Roman', 'weight': 'normal', 'size': '14.0'}
 plt.rc('font', **font)
 
@@ -47,16 +47,21 @@ def SSE(alpha, data):
 	return (sse / (length - 2))
 
 
-def alpha_optimize(data):
+def alpha_optimize(data, use_constraints=False):
 	'''Performes smoothing parameter <alpha> optimization for defined sample timeseries.
 	'''
 	# Initial alpha-value
 	alpha0 = 0.2
 
-	# Find optimal alpha value (nelder-mead or BFGS). For debug add option <'disp': 'False'>
-	result = minimize(SSE, alpha0, args=(data,), method='nelder-mead', options={'maxiter': '100'})
-	alpha = result.x
-	
+	# Alpha range
+	if use_constraints:
+		bounds_ES = [(0,1)]
+	else:
+		bounds_ES = [(None, None)]
+
+	# Find optimal alpha value. For debug set option: disp=5
+	result = fmin_tnc(SSE, alpha0, args=(data,), bounds=bounds_ES, approx_grad=True, xtol=0.001, disp=0) 
+	alpha = result[0]
 	return alpha
 
 
@@ -67,7 +72,7 @@ def exp_smoothing(x, a, s):
 	return a * x + (1 - a) * s
 
 
-def test_alpha_optimization(data, length):
+def test_alpha_optimization(data, length, use_constraints):
 	'''Consecutive training series increase and further alpha and SSE estimation.
 	'''
 	alpha = np.zeros(length - 2); sse = np.zeros(length - 2)
@@ -78,7 +83,7 @@ def test_alpha_optimization(data, length):
 		sys.stdout.flush()
 
 		# Alpha optimization procedure
-		alpha[i] = alpha_optimize(data[:i + 3])
+		alpha[i] = alpha_optimize(data[:i + 3], use_constraints)
 
 		# Compute SSE for full timeseries with current <alpha> value
 		sse[i] = SSE(alpha[i], data)
@@ -88,6 +93,10 @@ def test_alpha_optimization(data, length):
 
 
 if __name__ == "__main__":
+	
+	# Use constraints for smoothing parameter?
+	use_constraints = False
+
 	# Check arguments
 	if len(sys.argv) < 2 or len(sys.argv) > 3:
 		print "Utility usage: ./{} <file_name> [-s]".format(sys.argv[0])
@@ -110,13 +119,14 @@ if __name__ == "__main__":
 
 	# Run test
 	print "\nProcessing..."
-	alpha, sse = test_alpha_optimization(y, data_length)
+	alpha, sse = test_alpha_optimization(y, data_length, use_constraints)
 
 	# Plot obtained results
 	figure1 = plt.figure()
-	plt.plot(xrange(data_length - 2), alpha)
-	plt.axhline(y=1, linewidth=1, linestyle='--')
-	plt.axhline(y=0, linewidth=1, linestyle='--')
+	plt.plot(xrange(data_length - 2), alpha, color='k')
+	plt.axhline(y=1, color='k', linewidth=1, linestyle='--')
+	plt.axhline(y=0, color='k', linewidth=1, linestyle='--')
+	plt.gray()
 	plt.xlabel(u'Длина интервала подгонки сглаживающего коэффициента')
 	plt.ylabel(u'Значение сглаживающего коэффициента')
 	plt.title(u'Выбор сглаживающего коэффициента')
@@ -127,7 +137,7 @@ if __name__ == "__main__":
 		plt.savefig(fname, dpi=300)
 
 	figure2 = plt.figure()
-	plt.plot(xrange(data_length - 2), sse)
+	plt.plot(xrange(data_length - 2), sse, color='k')
 	plt.xscale('log')
 	plt.yscale('log')
 	plt.xlabel(u'Длина интервала подгонки сглаживающего коэффициента')

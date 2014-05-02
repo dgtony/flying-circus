@@ -15,9 +15,9 @@ def exp_smoothing(x, y, args):
 	Smoothing coefficient is adjusted on every step with Nelder-Mead minimization of 
 	squared error of last prediction.
 	'''
-	from scipy.optimize import minimize
+	from scipy.optimize import fmin_tnc
 	
-	# Should we restrict smoothing parameters (True) or not (False)? Constraints: 0 < parameter < 1
+	# Should we restrict smoothing parameters (True) or not (False)?
 	use_constraints = True
 
 
@@ -82,32 +82,34 @@ def exp_smoothing(x, y, args):
 	def param_optimization(initial_parameters, y_current, y_previous, s, t=0, model='SES'):
 		'''Adjusts smoothing, trend and damping coefficients, minimizing the square of last prediction error
 		'''
+		# Set constraints for values
+		if use_constraints:
+			bounds_SES = [(0,1)]
+			bounds_ES_A = [(0,1), (None, None)]
+			bounds_ES_DA = [(0,1), (None, None), (None, None)]
+		else:
+			bounds_SES = [(None, None)]
+			bounds_ES_A = [(None, None), (None, None)]
+			bounds_ES_DA = [(None, None), (None, None), (None, None)]
+
 		if model == 'SES':
-			# Find optimal alpha value (nelder-mead). For debug add option <'disp': 'True'>
-			result = minimize(squared_error, initial_parameters, args=(y_current, y_previous, s, model), method='nelder-mead', options={'maxiter': '500'}) 
+			# Find optimal alpha value with truncated Newton algorithm. For debug set option: disp=5.
+			result = fmin_tnc(squared_error, initial_parameters, bounds=bounds_SES, approx_grad=True, args=(y_current, y_previous, s, model), xtol=0.001, disp=0) 
 		elif model == 'ES_A':
 			# Find optimal alpha and gamma values
-			result = minimize(squared_error, initial_parameters, args=(y_current, y_previous, s, t, model), method='nelder-mead', options={'maxiter': '500'}) 
+			result = fmin_tnc(squared_error, initial_parameters, bounds=bounds_ES_A, approx_grad=True, args=(y_current, y_previous, s, t, model), xtol=0.001, disp=0) 
 		elif model == 'ES_DA':
 			# Find optimal alpha, gamma and phi values
-			result = minimize(squared_error, initial_parameters, args=(y_current, y_previous, s, t, model), method='nelder-mead', options={'maxiter': '500'}) 
+			result = fmin_tnc(squared_error, initial_parameters, bounds=bounds_ES_DA, approx_grad=True, args=(y_current, y_previous, s, t, model), xtol=0.001, disp=0) 
 		else:
 			print "Error! Wrong model type!"
 			exit(1)
 
-		# Check alpha constraints
-		if use_constraints:
-			for i in xrange(len(result.x)):
-				if result.x[i] < 0:
-					result.x[i] = 0
-				elif result.x[i] > 1:
-					result.x[i] = 1
-
-		return result.x
+		return result[0]
 
 	# Prediction data initialization
 	predict = np.zeros((6, len(y)))
-	pr_models = [u"Модель SES. Пошаговая оценка     ", u"Модель ES-A. Пошаговая оценка    ", u"Модель ES-DA. Пошаговая оценка   ", u"Модель SES. Интервальная оценка  ", u"Модель ES-A. Интервальная оценка ", u"Модель ES-DA. Интервальная оценка"]
+	pr_models = [u"Модель N-N. Пошаговая оценка     ", u"Модель A-N. Пошаговая оценка    ", u"Модель DA-N. Пошаговая оценка   ", u"Модель N-N. Интервальная оценка  ", u"Модель A-N. Интервальная оценка ", u"Модель DA-N. Интервальная оценка"]
 	
 	# Parameters initializing
 	# Parameters estimation interval 
@@ -223,19 +225,19 @@ def exp_smoothing(x, y, args):
 		plt.title(u"Экспоненциальное сглаживание") 
 		plt.legend(loc='best')
 		plt.grid(True)
-		if args.save != "":
-			plt.savefig(args.save + "-forecast.png", dpi=300)
+		if args.save:
+			plt.savefig(args.file + "-forecast.png", dpi=300)
 
 		# Plot SES-model parameter evolution
 		fig2 = plt.figure()
 		plt.plot(x[:-1], alpha_SES[:-1], label=u"Коэффициент сглаживания")
 		plt.xlabel(u'Время')
 		plt.ylabel(u'Значение параметра')
-		plt.title(u"Модель SES. Эволюция параметров") 
+		plt.title(u"Модель N-N. Эволюция параметров - пошаговая оценка") 
 		plt.legend(loc='best')
 		plt.grid(True)
-		if args.save != "":
-			plt.savefig(args.save + "-SES.png", dpi=300)
+		if args.save:
+			plt.savefig(args.file + "-NN.png", dpi=300)
 
 		# Plot ES_A-model parameter evolution
 		fig3 = plt.figure()
@@ -243,11 +245,11 @@ def exp_smoothing(x, y, args):
 		plt.plot(x[:-1], gamma_ES_A[:-1], marker=markers[2], label=u"Сглаживание тренда")
 		plt.xlabel(u'Время')
 		plt.ylabel(u'Значение параметра')
-		plt.title(u"Модель ES-A. Эволюция параметров") 
+		plt.title(u"Модель A-N. Эволюция параметров - пошаговая оценка") 
 		plt.legend(loc='best')
 		plt.grid(True)
-		if args.save != "":
-			plt.savefig(args.save + "-ES-A.png", dpi=300)
+		if args.save:
+			plt.savefig(args.file + "-AN.png", dpi=300)
 
 		# Plot ES_DA-model parameter evolution
 		fig4 = plt.figure()
@@ -256,23 +258,22 @@ def exp_smoothing(x, y, args):
 		plt.plot(x[:-1], phi_ES_DA[:-1], marker=markers[2], label=u"Параметр демпфирования")
 		plt.xlabel(u'Время')
 		plt.ylabel(u'Значение параметра')
-		plt.title(u"Модель ES-DA. Эволюция параметров") 
+		plt.title(u"Модель DA-N. Эволюция параметров - пошаговая оценка") 
 		plt.legend(loc='best')
 		plt.grid(True)
-		if args.save != "":
-			plt.savefig(args.save + "-ES-DA.png", dpi=300)
-			print "Results are saved in correponding files."
+		if args.save:
+			plt.savefig(args.file + "-DAN.png", dpi=300)
 
 		# Plot SES-PE-model parameter evolution
 		fig5 = plt.figure()
 		plt.plot(x[:-1], alpha_SES_pe[:-1], label=u"Коэффициент сглаживания")
 		plt.xlabel(u'Время')
 		plt.ylabel(u'Значение параметра')
-		plt.title(u"Модель SES-PE. Эволюция параметров") 
+		plt.title(u"Модель N-N. Эволюция параметров - интервальная оценка") 
 		plt.legend(loc='best')
 		plt.grid(True)
-		if args.save != "":
-			plt.savefig(args.save + "-SES-PE.png", dpi=300)
+		if args.save:
+			plt.savefig(args.file + "-NN-PE.png", dpi=300)
 
 		# Plot ES_A-PE-model parameter evolution
 		fig6 = plt.figure()
@@ -280,11 +281,11 @@ def exp_smoothing(x, y, args):
 		plt.plot(x[:-1], gamma_ES_A_pe[:-1], marker=markers[1], label=u"Сглаживание тренда")
 		plt.xlabel(u'Время')
 		plt.ylabel(u'Значение параметра')
-		plt.title(u"Модель ES-A-PE. Эволюция параметров") 
+		plt.title(u"Модель A-N. Эволюция параметров - интервальная оценка") 
 		plt.legend(loc='best')
 		plt.grid(True)
-		if args.save != "":
-			plt.savefig(args.save + "-ES-A-PE.png", dpi=300)
+		if args.save:
+			plt.savefig(args.file + "-AN-PE.png", dpi=300)
 
 		# Plot ES_DA-PE-model parameter evolution
 		fig7 = plt.figure()
@@ -293,13 +294,12 @@ def exp_smoothing(x, y, args):
 		plt.plot(x[:-1], phi_ES_DA_pe[:-1], marker=markers[2], label=u"Параметр демпфирования")
 		plt.xlabel(u'Время')
 		plt.ylabel(u'Значение параметра')
-		plt.title(u"Модель ES-DA-PE. Эволюция параметров") 
+		plt.title(u"Модель DA-N. Эволюция параметров - интервальная оценка") 
 		plt.legend(loc='best')
 		plt.grid(True)
-		if args.save != "":
-			plt.savefig(args.save + "-ES-DA-PE.png", dpi=300)
+		if args.save:
+			plt.savefig(args.file + "-DAN-PE.png", dpi=300)
 			print "Results are saved in correponding files."
-
 		plt.show()
 
 
@@ -350,7 +350,7 @@ def LP(x, y, args):
 				lp_coefficients = lpc.lpc_ref(y[k-signal_lengths[i]:k], orders[j])
 
 				# Save coefficients for further spectrum animation
-				if args.save != "":
+				if args.save:
 					coefficients_array[i*num_orders+j].append(lp_coefficients)
 				
 				point = lpc.lpc_predict(y[k-orders[j]:k], orders[j], lp_coefficients)
@@ -409,11 +409,11 @@ def LP(x, y, args):
 	print line_separator
 
 	# Save LP coefficients in file
-	if args.save != "":
+	if args.save:
 		# Open file
 		for i in xrange(num_signal_lengths):
 			for j in xrange(num_orders):
-				filename = args.save + "_ord%d_sig%d.dat" % (orders[j], signal_lengths[i])
+				filename = args.file + "_ord%d_sig%d.dat" % (orders[j], signal_lengths[i])
 				outfile=open(filename, 'wb')
 #				title = "LP coefficients change during prediction"
 #				outfile.write(title + "\n")
@@ -535,14 +535,14 @@ def polynome_test(x, y, args):
 	print line_separator
 
 	# Save results in file
-	if args.save != "":
+	if args.save:
 		# Choose splitter
 		if args.space:
 			splitter = " "
 		else:
 			splitter = ","
 		# Open file
-		outfile = open(args.save, 'wb')
+		outfile = open(args.file + "-testresult.csv", 'wb')
 		title = "Approximation by different polynomes with lag {}".format(lag)
 		outfile.write(title + "\n")
 		# Have we got any extrapolation data? Yes...
@@ -648,14 +648,14 @@ def lag_test(x, y, args):
 	print line_separator
 
 # Save results in file
-	if args.save != "":
+	if args.save:
 		# Choose splitter
 		if args.space:
 			splitter = " "
 		else:
 			splitter = ","
 		# Open file
-		outfile = open(args.save,'wb')
+		outfile = open(args.file + "-testresult.csv",'wb')
 		title = "Approximation by {}-power polynome with different lags".format(p)
 		outfile.write(title + "\n")
 		head = "x" + splitter + "y"
@@ -789,16 +789,16 @@ def spencer(x, y, args):
 ############ Main()
 # Utility options
 parser = argparse.ArgumentParser(description='Utility is intended to test different traffic prediction functions in LBO.')
-parser.add_argument('file',help='File with original traffic trace data')
+parser.add_argument('file', help='File with original traffic trace data')
 #parser.add_argument("-a","--animate",action="store_true",help="Save animation of LP coefficients spectrum change")
-parser.add_argument("-e","--extrapolate",action="store_true",help="use additional 1,2,3-power extrapolation in polynome-test")
+parser.add_argument("-e","--extrapolate", action="store_true", help="use additional 1,2,3-power extrapolation in polynome-test")
 #parser.add_argument("-n",type=int,default=2,help="number of experiments")
-parser.add_argument("-p","--plot",action="store_true",help="plot obtained results")
-parser.add_argument("-r",default="",help="time range to simulate, sec: start-finish (i.e. 0.2-17.65)")
-parser.add_argument("-s","--save",default="",help="save obtained results to file")
-parser.add_argument("--space",action="store_true",help="used to separate values in file by whitespaces. By default \
+parser.add_argument("-p","--plot", action="store_true", help="plot obtained results")
+parser.add_argument("-r", default="", help="time range to simulate, sec: start-finish (i.e. 0.2-17.65)")
+parser.add_argument("-s","--save", action="store_true", help="save obtained results to file")
+parser.add_argument("--space", action="store_true", help="used to separate values in file by whitespaces. By default \
 					commas are used.")
-parser.add_argument("-t","--type",default="polynome",help="type of experiment (default test is polynome)",choices=["polynome", "ES", "lag", "LP", "spencer"])
+parser.add_argument("-t","--type", default="polynome", help="type of experiment (default test is polynome)", choices=["ES", "lag", "LP", "polynome", "spencer"])
 args = parser.parse_args()
 
 # Color list
