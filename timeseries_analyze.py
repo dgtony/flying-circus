@@ -156,26 +156,27 @@ def distribution_estimate(data, distributions, verb_level=3, f_plot_pdf=True):
 		plt.legend(loc='best')
 		plt.grid(True)
 
-def exclude_trend(ts, trend_order=2, excl_trend_plot=False):
+def exclude_trend(ts, trend_order=0, excl_trend_plot=False):
 	'''Remove trends of defined order from time series.
 	'''
 	ts_length = len(ts)
-	ts_excl_trend = np.zeros(ts_length)
-	# Remove trend	
-	trend = np.polyfit(np.arange(ts_length), ts, 2)
-	ts_excl_trend = ts - pow(np.arange(ts_length),2)*trend[0] - np.arange(ts_length)*trend[1] - trend[2]
+	# Obtain trend parameters
+	trend = np.polyfit(np.arange(ts_length), ts, trend_order)	
+	# Remove trend
+	ts_excl_trend = ts
+	for t_ord in xrange(trend_order+1):
+		ts_excl_trend = ts_excl_trend - pow(np.arange(ts_length), t_ord) * trend[trend_order - t_ord]
 	if excl_trend_plot:
 		fig4 = plt.figure()
-		plt.plot(np.arange(ts_length), ts, label=u'Исходный ряд')
-		plt.plot(np.arange(ts_length), ts_excl_trend, label=u'Удален тренд порядка {}'.format(trend_order))
+		plt.plot(np.arange(ts_length), ts, color='k', marker='.', label=u'Исходный ряд')
+		plt.plot(np.arange(ts_length), ts_excl_trend, color='k', marker='x', label=u'Удален тренд порядка {}'.format(trend_order))
 		plt.legend(loc='best')
+		plt.grid(True)
 	return ts_excl_trend
 
 def hurst_RS(ts, maxlag='auto', f_plot=True):
 	'''Returns the Hurst exponent of the time series by calculating R/S-statistic.
 	'''
-	# Exclude trend from time series
-	ts = exclude_trend(ts)
 	ts_length = len(ts)
 	# Number of lags to investigate
 	if maxlag == 'auto':
@@ -248,8 +249,6 @@ def hurst_RS(ts, maxlag='auto', f_plot=True):
 def hurst_var(ts, maxlag='auto', f_plot=True):
 	'''Returns the Hurst exponent of the time series by variance-plot method.
 	'''
-	# Exclude trend from time series
-	ts = exclude_trend(ts)
 	ts_length = len(ts)
 	# Number of lags to investigate
 	if maxlag == 'auto':
@@ -362,8 +361,10 @@ if __name__ == "__main__":
 	f_use_symmetric_ACF = False
 	# Plot pdf-functions in distribution estimation test
 	f_plot_pdf = False
-	# Exclude trend before spectral, ACF and PACF analysis?
-	f_exclude_trend = False
+	# Order of trend to exclude before spectral, ACF and PACF analysis (0 for no trend)
+	exclude_trend_order = 3
+	# Plot original timeseries vs. one with excluded trend
+	f_excl_plot = False
 #######################################################
 
 	# Check input arguments
@@ -391,16 +392,15 @@ if __name__ == "__main__":
 	is_adf_short = True
 	adftest(y, is_adf_short)
 
+	# Exclude trend for further analysis
+	y = exclude_trend(y, trend_order=exclude_trend_order, excl_trend_plot=f_excl_plot)
+
 	# Estimate Hurst coefficient for timeseries
 	h1, ml1 = hurst_var(y, maxstep, f_plot_Hurst)
 	h2, ml2 = hurst_RS(y, maxstep, f_plot_Hurst)
 	print "\nHurst parameter estimation, maximum_lag: {}".format(ml1)
 	print "Variance plot: {}\nR/S-statistic: {}\n".format(round(h1,3), round(h2,3))
-
-	# Exclude trend for spectral analysis?
-	if f_exclude_trend:
-		y = exclude_trend(y, trend_order=2)
-
+	
 	# Caclulate timeseries spectrums
 	spectrum = abs(np.fft.fft(y))
 	freq = abs(np.fft.fftfreq(x.size, timestep))
@@ -417,30 +417,30 @@ if __name__ == "__main__":
 	plt.grid(True)
 
 	# ACF plot
-	if f_use_symmetric_ACF == True:
+	if f_use_symmetric_ACF:
 	# Symmetric ACF
 		plt.subplot(222)
-		plt.acorr(y, maxlags=None, color='b')
+		plt.acorr(y, maxlags=None, color='k')
 		plt.xlabel(u"Время")
 		plt.ylabel(u"АКФ")
 		#plt.title("Timeseries ACF")
 		plt.grid(True)
 	else:
 	# Asymmetric ACF
-		autocorrelation_plot(y, ax=plt.subplot(222), color='b')
+		autocorrelation_plot(y, ax=plt.subplot(222), color='k')
 		plt.xlabel(u'Шаг')
 		plt.ylabel(u'АКФ')
 		plt.title('')
 	
 	# Spectrum plot
 	plt.subplot(223)
-	plt.plot(freq, np.log(spectrum), color='g')
+	plt.plot(freq, np.log(spectrum), color='k')
 	plt.xlabel(u"Частота")
 	plt.ylabel(u"Амплитуда (log)")
 	#plt.title("Timeseries spectrum")
 	plt.grid(True)
 
-	if f_show_PACF == True:
+	if f_show_PACF:
 		from statsmodels.graphics.tsaplots import plot_pacf
 		plot_pacf(y, ax=plt.subplot(224), lags=pacf_lags)
 		plt.xlabel(u'Шаг')
@@ -450,7 +450,7 @@ if __name__ == "__main__":
 	else:
 		# Power spectrum plot
 		plt.subplot(224)
-		plt.plot(freq, power_spectrum, color='r')
+		plt.plot(freq, power_spectrum, color='k')
 		plt.xlabel(u"Частота")
 		plt.ylabel(u"Мощность")
 		#plt.title("Power spectrum")
