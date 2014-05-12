@@ -40,7 +40,7 @@ xl = []; yl = []; i = 0
 fname = sys.argv[1].split(".")
 fname_part = ".".join(fname[:-1])
 print "Open file \"{}\", processing...".format(sys.argv[1])
-fd = open(sys.argv[1], 'rb')
+fd = open(sys.argv[1], 'rU')
 c = csv.reader(fd)
 for row in c:
 	i += 1

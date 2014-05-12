@@ -318,7 +318,7 @@ def loadData(filename):
 	'''Loads timeseries from file'''
 	x = []; y = []
 	i = 0
-	fd = open(filename, 'rb')
+	fd = open(filename, 'rU')
 	c = csv.reader(fd)
 	for row in c:
 		i += 1

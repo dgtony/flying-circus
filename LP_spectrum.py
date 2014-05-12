@@ -22,7 +22,7 @@ def animate(i):
 def loadData(filename):
 	'''Load coefficients from file to list of numpy arrays'''
 	lst = [];
-	fd = open(filename, 'rb')
+	fd = open(filename, 'rU')
 	for string in fd:
 		coeff = [float(s) for s in string.strip().split(" ")]
 		lst.append(np.asarray(coeff, dtype=float))

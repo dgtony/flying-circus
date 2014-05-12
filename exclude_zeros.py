@@ -11,7 +11,7 @@ if len(sys.argv) < 2:
 
 # Load data from file
 xl = []; yl = []; i = 0
-fd = open(sys.argv[1],'rb')
+fd = open(sys.argv[1],'rU')
 c = csv.reader(fd)
 for row in c:
 	i += 1
